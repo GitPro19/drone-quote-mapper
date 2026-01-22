@@ -1,5 +1,13 @@
-document.addEventListener('DOMContentLoaded', () => {
-  App.init();
+// Simple initialization - wait for DOM and scripts
+window.addEventListener('load', () => {
+  console.log('Window loaded, initializing app...');
+  console.log('L available:', typeof L !== 'undefined');
+  console.log('CONFIG available:', typeof CONFIG !== 'undefined');
+  
+  // Give it a moment for all scripts to execute
+  setTimeout(() => {
+    App.init();
+  }, 100);
 });
 
 const App = {

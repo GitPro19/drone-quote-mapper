@@ -46,14 +46,16 @@ const Quote = {
   },
   populateServiceTypes: () => {
     const select = document.getElementById('quoteServiceType');
-    select.innerHTML = '<option value="">Select service...</option>' +
-      CONFIG.serviceTypes.map(s => `<option value="${s.id}" data-price="${s.basePrice}">${s.name}</option>`).join('');
+    if (!select) return;
+    select.innerHTML = '<option value="">Select service type...</option>' +
+      CONFIG.serviceTypes.map(s => `<option value="${s.id}" data-price="${s.basePrice || CONFIG.pricing.basePricePerAcre || 250}">${s.name}</option>`).join('');
     select.addEventListener('change', (e) => {
       const option = e.target.options[e.target.selectedIndex];
       const basePrice = option.dataset.price;
       if (basePrice) {
         document.getElementById('quoteBasePrice').value = basePrice;
         Quote.calculatePrice();
+        Quote.updateQuoteDisplay();
       }
     });
   },
@@ -93,22 +95,61 @@ const Quote = {
     return photoCount * (basePrice || CONFIG.pricing.photoProcessingCost) * CONFIG.pricing.photoMultiplier;
   },
   createQuote: () => {
-    const customerId = document.getElementById('quoteCustomer').value;
+    // Get customer information from form
+    const customerName = document.getElementById('quoteCustomerName')?.value.trim();
+    const customerEmail = document.getElementById('quoteCustomerEmail')?.value.trim();
+    const customerPhone = document.getElementById('quoteCustomerPhone')?.value.trim();
     const serviceType = document.getElementById('quoteServiceType').value;
     const area = parseFloat(document.getElementById('quoteArea')?.value) || 0;
     const areaUnit = document.getElementById('quoteAreaUnit')?.value || 'acres';
-    const basePrice = parseFloat(document.getElementById('quoteBasePrice').value) || 0;
     const photoCount = parseInt(document.getElementById('quotePhotoCount')?.value) || 0;
-    const total = Quote.calculatePrice();
-    const service = CONFIG.serviceTypes.find(s => s.id === serviceType);
     
-    if (!customerId || !serviceType) {
-      alert('Please fill in all required fields');
+    // Validation
+    if (!customerName || !customerEmail || !serviceType) {
+      alert('Please fill in all required fields (Name, Email, and Service Type)');
       return;
     }
     
+    if (area <= 0) {
+      alert('Please map your property first before requesting a quote.');
+      return;
+    }
+    
+    // Auto-calculate coverage and price
+    Quote.calculateCoverage();
+    const total = Quote.calculatePrice();
+    const service = CONFIG.serviceTypes.find(s => s.id === serviceType);
+    
+    // Get base price from service type or use default
+    const basePrice = service?.basePrice || CONFIG.pricing.basePricePerAcre || 250;
+    
+    // Create or find customer
+    let customer = Storage.customers.getAll().find(c => 
+      c.email && c.email.toLowerCase() === customerEmail.toLowerCase()
+    );
+    
+    if (!customer) {
+      customer = Storage.customers.add({
+        name: customerName,
+        email: customerEmail,
+        phone: customerPhone || '',
+        address: '',
+        notes: 'Created from quote request'
+      });
+    } else {
+      // Update existing customer info
+      Storage.customers.update(customer.id, {
+        name: customerName,
+        phone: customerPhone || customer.phone || ''
+      });
+    }
+    
+    // Create quote
     const quote = {
-      customerId: customerId,
+      customerId: customer.id,
+      customerName: customerName,
+      customerEmail: customerEmail,
+      customerPhone: customerPhone,
       serviceType: serviceType,
       serviceName: service ? service.name : '',
       area: area,
@@ -116,15 +157,23 @@ const Quote = {
       basePrice: basePrice,
       photoCount: photoCount,
       photoCost: Quote.calculatePhotoCost(photoCount),
-      areaCost: parseFloat(document.getElementById('quoteAreaCost')?.textContent.replace('$', '') || 0),
+      areaCost: parseFloat(document.getElementById('quoteAreaCost')?.textContent.replace('$', '').replace(',', '') || 0),
       total: total,
-      status: 'draft'
+      status: 'pending',
+      requestedDate: new Date().toISOString()
     };
+    
     Storage.quotes.add(quote);
-    Quote.renderList();
+    
+    // Show success message
+    alert(`Thank you, ${customerName}! Your quote request has been submitted. We'll send a detailed quote to ${customerEmail} within 24 hours.`);
+    
+    // Reset form (but keep the mapped area)
     document.getElementById('quoteForm').reset();
     document.getElementById('quotePriceBreakdown')?.classList.add('is-hidden');
-    alert('Quote created successfully!');
+    
+    // Optionally scroll to top or show confirmation
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   },
   
   calculateCoverage: () => {
@@ -224,8 +273,32 @@ const Quote = {
       MapManager.updateFlightPath(result.flightPath);
     }
     
-    // Update quote form price
+    // Update quote form price and display
     Quote.calculatePrice();
+    Quote.updateQuoteDisplay();
+  },
+  
+  updateQuoteDisplay: () => {
+    const area = parseFloat(document.getElementById('quoteArea')?.value) || 0;
+    const areaUnit = document.getElementById('quoteAreaUnit')?.value || 'acres';
+    const photoCount = parseInt(document.getElementById('quotePhotoCount')?.value) || 0;
+    const breakdown = document.getElementById('quotePriceBreakdown');
+    
+    if (area > 0 && breakdown) {
+      // Format area display
+      let areaDisplay = '';
+      if (areaUnit === 'acres') {
+        areaDisplay = area.toFixed(2) + ' acres';
+      } else if (areaUnit === 'sqft') {
+        areaDisplay = area.toLocaleString() + ' sq ft';
+      } else {
+        areaDisplay = area.toFixed(2) + ' ' + areaUnit;
+      }
+      
+      document.getElementById('quoteAreaDisplay').textContent = areaDisplay;
+      document.getElementById('quotePhotoCountDisplay').textContent = photoCount.toLocaleString();
+      breakdown.classList.remove('is-hidden');
+    }
   },
   renderList: () => {
     const list = document.getElementById('quoteList');

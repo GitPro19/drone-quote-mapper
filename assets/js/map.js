@@ -21,35 +21,106 @@ const MapManager = {
   currentAreaPolygon: null,
 
   init: () => {
-    MapManager.createMap();
-    MapManager.setupPlotting();
-    MapManager.setupEventListeners();
-    MapManager.setupCoordinateDisplay();
+    // Delay slightly to ensure DOM is fully ready
+    setTimeout(() => {
+      MapManager.createMap();
+      MapManager.setupPlotting();
+      MapManager.setupEventListeners();
+      MapManager.setupCoordinateDisplay();
+    }, 50);
   },
 
   createMap: () => {
-    MapManager.map = L.map('map').setView([CONFIG.defaultCenter.lat, CONFIG.defaultCenter.lng], CONFIG.defaultZoom);
+    console.log('createMap called');
+    console.log('L available:', typeof L !== 'undefined');
+    console.log('CONFIG available:', typeof CONFIG !== 'undefined');
     
-    MapManager.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Esri World Imagery',
-      maxZoom: 19
-    });
+    // Check if Leaflet is loaded
+    if (typeof L === 'undefined') {
+      console.error('Leaflet library not loaded!');
+      return;
+    }
     
-    MapManager.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: 'OpenStreetMap',
-      maxZoom: 19
-    });
+    const mapElement = document.getElementById('map');
+    if (!mapElement) {
+      console.error('Map element #map not found');
+      return;
+    }
     
-    // Add labels layer for place names (works with both satellite and street views)
-    MapManager.labelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap contributors © CARTO',
-      maxZoom: 19,
-      pane: 'overlayPane'
-    });
+    console.log('Map element found, dimensions:', mapElement.offsetWidth, 'x', mapElement.offsetHeight);
     
-    MapManager.satelliteLayer.addTo(MapManager.map);
-    MapManager.labelsLayer.addTo(MapManager.map);
-    MapManager.currentLayer = MapManager.satelliteLayer;
+    // Force dimensions if needed
+    if (mapElement.offsetHeight === 0) {
+      mapElement.style.height = '600px';
+      console.log('Forced map height to 600px');
+    }
+    if (mapElement.offsetWidth === 0) {
+      mapElement.style.width = '100%';
+      console.log('Forced map width to 100%');
+    }
+    
+    try {
+      // Create map with explicit options
+      const center = CONFIG ? [CONFIG.defaultCenter.lat, CONFIG.defaultCenter.lng] : [44.8356, -69.2733];
+      const zoom = CONFIG ? CONFIG.defaultZoom : 13;
+      
+      console.log('Creating map at:', center, 'zoom:', zoom);
+      
+      MapManager.map = L.map('map', {
+        center: center,
+        zoom: zoom,
+        zoomControl: true,
+        preferCanvas: false
+      });
+      
+      console.log('Map created:', MapManager.map);
+      
+      // Use OpenStreetMap as primary (most reliable)
+      MapManager.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19,
+        subdomains: ['a', 'b', 'c']
+      });
+      
+      // Satellite layer (Esri)
+      MapManager.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Esri World Imagery',
+        maxZoom: 19
+      });
+      
+      // Labels layer
+      MapManager.labelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO',
+        maxZoom: 19,
+        pane: 'overlayPane',
+        subdomains: ['a', 'b', 'c']
+      });
+      
+      // Start with satellite + labels
+      MapManager.satelliteLayer.addTo(MapManager.map);
+      MapManager.labelsLayer.addTo(MapManager.map);
+      MapManager.currentLayer = MapManager.satelliteLayer;
+      
+      // Invalidate size
+      MapManager.map.invalidateSize();
+      
+      MapManager.map.whenReady(() => {
+        console.log('Map is ready!');
+        MapManager.map.invalidateSize();
+      });
+      
+      // Force invalidate after a delay
+      setTimeout(() => {
+        if (MapManager.map) {
+          MapManager.map.invalidateSize();
+          console.log('Map size invalidated after delay');
+        }
+      }, 500);
+      
+    } catch (error) {
+      console.error('Error creating map:', error);
+      console.error(error.stack);
+    }
   },
 
   setupPlotting: () => {
@@ -269,7 +340,7 @@ const MapManager = {
       if (quoteArea) quoteArea.value = areaValue;
       if (quoteAreaUnit) quoteAreaUnit.value = unit;
       
-      // Auto-trigger coverage calculation
+      // Auto-trigger coverage calculation and quote update
       if (typeof CoverageCalculator !== 'undefined' && plots.length > 0) {
         const allBounds = MapManager.getAllPlotsBounds();
         if (allBounds && allBounds.isValid()) {
@@ -282,6 +353,11 @@ const MapManager = {
           ];
           MapManager.autoCalculateCoverage(combinedCoords, totalArea);
         }
+      }
+      
+      // Update quote display if form is visible
+      if (typeof Quote !== 'undefined' && Quote.updateQuoteDisplay) {
+        Quote.updateQuoteDisplay();
       }
     }
   },

@@ -168,6 +168,12 @@ const LandPlotting = {
       MapManager.updateAllMeasurements();
     }
     
+    // Auto-calculate coverage and show quote estimate
+    if (typeof Quote !== 'undefined') {
+      Quote.calculateCoverage();
+      Quote.updateQuoteDisplay();
+    }
+    
     // Show obstacle marking option
     LandPlotting.showObstacleOption();
   },
