@@ -126,16 +126,17 @@
             <div class="quote-section">
               <p class="step-instruction">Fill out your contact information below and we'll calculate your personalized quote based on your property size.</p>
               <ul class="step-tips">
-                <li>Pick a package to control photo count.</li>
+                <li>Pick a package to control drone photo count.</li>
                 <li>If the area looks off, go back and Readjust Boundary.</li>
+                <li>Most drone shots are angled; only the top-down shots show on the map.</li>
               </ul>
               <div class="form-group">
-                <label for="quotePackage">Photo Package</label>
-                <select id="quotePackage" class="form-select" aria-label="Photo Package"></select>
+                <label for="quotePackage">Drone Photo Package</label>
+                <select id="quotePackage" class="form-select" aria-label="Drone Photo Package"></select>
                 <p class="help-text" id="quotePackageHint"></p>
                 <div class="package-summary is-hidden" id="quotePackageSummary">
-                  <div class="package-summary-item total">
-                    <span>Land shots:</span>
+                  <div class="package-summary-item">
+                    <span>Property shots:</span>
                     <strong id="quotePackageLandCount">-</strong>
                   </div>
                   <div class="package-summary-item">
@@ -150,8 +151,8 @@
                     <span>Building shots:</span>
                     <strong id="quotePackageBuildingCount">-</strong>
                   </div>
-                  <div class="package-summary-item">
-                    <span>Total photos:</span>
+                  <div class="package-summary-item total">
+                    <span>Total drone photos:</span>
                     <strong id="quotePackagePhotoCount">-</strong>
                   </div>
                 </div>
@@ -188,7 +189,7 @@
                     <span id="quoteAreaDisplay">-</span>
                   </div>
                   <div class="quote-price-item">
-                    <span>Photos Needed:</span>
+                    <span>Drone Photos Needed:</span>
                     <span id="quotePhotoCountDisplay">-</span>
                   </div>
                   <div class="quote-price-item">
@@ -196,7 +197,7 @@
                     <span id="quoteAreaCost">$0.00</span>
                   </div>
                   <div class="quote-price-item">
-                    <span>Photo Processing:</span>
+                    <span>Drone Photo Processing:</span>
                     <span id="quotePhotoCost">$0.00</span>
                   </div>
                   <div class="quote-price-item">
@@ -273,8 +274,8 @@
               <input type="number" id="basePricePerAcre" class="form-input" step="0.01" value="250" aria-label="Base Pricing per acre">
             </div>
             <div class="form-group">
-              <label for="photoProcessingCost">Photo Processing Cost (per photo)</label>
-              <input type="number" id="photoProcessingCost" class="form-input" step="0.01" value="0.50" aria-label="Photo Processing Cost per photo">
+              <label for="photoProcessingCost">Drone Photo Processing Cost (per photo)</label>
+              <input type="number" id="photoProcessingCost" class="form-input" step="0.01" value="0.50" aria-label="Drone Photo Processing Cost per photo">
             </div>
             <div class="form-group">
               <label for="photoMultiplier">Photo Multiplier</label>

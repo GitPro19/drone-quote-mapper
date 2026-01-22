@@ -372,6 +372,8 @@ const Quote = {
       result.flightPath.angledShots = result.photos.angled;
       result.flightPath.buildingPhotos = result.photos.building;
       result.flightPath.totalPhotos = totalPhotos;
+      result.flightPath.packageId = packageOptions.packageId || null;
+      result.flightPath.packageName = packageOptions.packageName || null;
       if (typeof LandPlotting !== 'undefined' && LandPlotting.getBuildingOrbits) {
         result.flightPath.orbits = LandPlotting.getBuildingOrbits(activePlot);
       }
@@ -382,11 +384,11 @@ const Quote = {
     if (resultsEl) {
       resultsEl.innerHTML = `
         <div class="coverage-results-item">
-          <span>Photos Needed:</span>
+          <span>Drone Photos Needed:</span>
           <strong>${totalPhotos}</strong>
         </div>
         <div class="coverage-results-item">
-          <span>Coverage per Photo:</span>
+          <span>Coverage per Drone Photo:</span>
           <strong>${result.coverage.widthFeet.toFixed(0)}' × ${result.coverage.heightFeet.toFixed(0)}'</strong>
         </div>
         <div class="coverage-results-item">

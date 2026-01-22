@@ -535,9 +535,11 @@ const MapManager = {
 
     MapManager.flightPathLayer = new L.FeatureGroup();
     
+    const lineStyle = MapManager.getFlightLineStyle(flightPath);
+    const maxLines = MapManager.getFlightLineBudget(flightPath);
+
     // Draw flight lines
     const waypoints = Array.isArray(flightPath.waypoints) ? flightPath.waypoints : [];
-    const maxLines = 12;
     const lineStride = waypoints.length ? Math.max(1, Math.ceil(waypoints.length / maxLines)) : 1;
     waypoints.forEach((line, lineIndex) => {
       if (lineIndex % lineStride !== 0 && lineIndex !== waypoints.length - 1) return;
@@ -556,9 +558,9 @@ const MapManager = {
       });
       const polyline = L.polyline(latlngs, {
         color: '#f59e0b',
-        weight: 2,
-        opacity: 0.6,
-        dashArray: '8 10',
+        weight: lineStyle.weight,
+        opacity: lineStyle.opacity,
+        dashArray: lineStyle.dashArray,
         lineCap: 'round',
         lineJoin: 'round',
         pane: 'flightPath'
@@ -568,11 +570,10 @@ const MapManager = {
     });
 
     const shotPoints = Array.isArray(flightPath.shotPoints) ? flightPath.shotPoints : [];
-    shotPoints.forEach((shot) => {
-      const isTopDown = shot.type === 'top-down';
+    shotPoints.filter(shot => shot.type === 'top-down').forEach((shot) => {
       const marker = L.circleMarker([shot.lat, shot.lng], {
-        radius: isTopDown ? 4 : 3,
-        fillColor: isTopDown ? '#38bdf8' : '#f59e0b',
+        radius: 4,
+        fillColor: '#38bdf8',
         color: '#0f172a',
         weight: 1,
         opacity: 0.9,
@@ -597,18 +598,6 @@ const MapManager = {
         pane: 'flightPath'
       });
       MapManager.flightPathLayer.addLayer(orbitLine);
-      orbitLatLngs.forEach((point) => {
-        const marker = L.circleMarker([point[0], point[1]], {
-          radius: 3,
-          fillColor: '#10b981',
-          color: '#0f172a',
-          weight: 1,
-          opacity: 0.9,
-          fillOpacity: 0.9,
-          pane: 'flightPath'
-        });
-        MapManager.flightPathLayer.addLayer(marker);
-      });
     });
     
     MapManager.map.addLayer(MapManager.flightPathLayer);
@@ -618,6 +607,29 @@ const MapManager = {
     if (MapManager.flightPathLayer.getBounds().isValid()) {
       MapManager.map.fitBounds(MapManager.flightPathLayer.getBounds(), { padding: [50, 50] });
     }
+  },
+
+  getFlightLineBudget: (flightPath) => {
+    const packageId = flightPath?.packageId;
+    if (packageId === 'economy') return 3;
+    if (packageId === 'standard') return 4;
+    if (packageId === 'premium') return 5;
+    const landPhotos = Number.isFinite(flightPath?.landPhotos) ? flightPath.landPhotos : 0;
+    if (landPhotos > 0 && landPhotos <= 20) return 3;
+    if (landPhotos > 0 && landPhotos <= 35) return 4;
+    if (landPhotos > 35) return 5;
+    return 4;
+  },
+
+  getFlightLineStyle: (flightPath) => {
+    const packageId = flightPath?.packageId;
+    if (packageId === 'economy') {
+      return { weight: 1.5, opacity: 0.45, dashArray: '12 14' };
+    }
+    if (packageId === 'premium') {
+      return { weight: 2.5, opacity: 0.75, dashArray: '4 6' };
+    }
+    return { weight: 2, opacity: 0.6, dashArray: '8 10' };
   },
 
   shouldShowFlightPath: () => {

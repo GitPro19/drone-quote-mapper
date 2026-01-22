@@ -28,7 +28,7 @@ const CONFIG = {
     garage: 4,
     shed: 3,
     barn: 5,
-    dock: 4,
+    dock: 2,
     default: 4
   },
   buildingShotRadii: {
