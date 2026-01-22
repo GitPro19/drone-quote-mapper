@@ -17,13 +17,15 @@
       <div class="map-area">
         <!-- Floating Action Button -->
         <div class="floating-controls">
-          <button id="startPlotting" class="fab btn-primary">Start Mapping Your Property</button>
           <button id="finishPlotting" class="fab btn-success is-hidden">Finish Mapping</button>
           <button id="cancelPlotting" class="fab btn-warning is-hidden">Start Over</button>
         </div>
         
         <!-- Map Controls (minimal, top-right) -->
         <div class="map-controls">
+          <div class="map-controls-group">
+            <button id="startPlotting" class="btn btn-primary start-mapping-btn">Start Mapping Your Property</button>
+          </div>
           <div class="map-controls-group">
             <input type="text" id="addressSearch" class="form-input search-input" placeholder="Search address...">
             <button id="searchAddress" class="btn btn-sm btn-primary">Search</button>
@@ -61,6 +63,10 @@
             <p class="step-instruction">Click on the map to mark the corners of your property. Start by clicking where one corner of your land is, then continue clicking around the boundary until you've outlined the entire area.</p>
             <p class="help-text">💡 <strong>Tip:</strong> Use the search box in the top-right to find your address quickly!</p>
             <p class="help-text" style="margin-top: 0.5rem;">Don't worry about being perfect - we can adjust the boundaries later if needed.</p>
+            <ul class="step-tips">
+              <li>Click to add corners, then drag points to fine-tune.</li>
+              <li>Press Enter to finish, Esc to cancel, Ctrl/Cmd+Z to undo.</li>
+            </ul>
             <div class="plotting-panel is-hidden" id="plottingPanel">
               <div class="plotting-status">
                 <span>Corner points marked: <strong id="pointCount">0</strong></span>
@@ -76,14 +82,32 @@
           <div class="step-header">
             <span class="step-number">2</span>
             <h2>Mark Buildings <span class="optional-badge">Optional</span></h2>
+            <span class="step-status" id="step2Status"></span>
           </div>
           <div class="step-content">
             <div class="obstacle-panel is-hidden" id="obstaclePanel">
               <p class="step-instruction">If you have houses, barns, or other large buildings on your property, click on the map to mark their locations.</p>
               <p class="help-text">This helps us plan the safest and most efficient flight path for our drone.</p>
+              <ul class="step-tips">
+                <li>Select a building type, then click the map to drop a marker.</li>
+                <li>Use Readjust Boundary to go back and fix your outline.</li>
+              </ul>
+              <div class="form-group">
+                <label for="obstacleType">Building type</label>
+                <select id="obstacleType" class="form-select" aria-label="Building type">
+                  <option value="house">House</option>
+                  <option value="garage">Garage</option>
+                  <option value="shed">Shed</option>
+                  <option value="barn">Barn</option>
+                  <option value="dock">Dock</option>
+                </select>
+              </div>
               <button id="markHouse" class="btn btn-primary">Mark a Building</button>
+              <p class="help-text is-hidden" id="markBuildingHint">Click on the map to place a building marker.</p>
               <div id="obstaclesList" class="obstacles-list"></div>
               <div class="obstacle-actions">
+                <button id="readjustPlotting" class="btn btn-secondary">Readjust Boundary</button>
+                <button id="resetPlot" class="btn btn-warning">Reset to Step 1</button>
                 <button id="finishObstacleMarking" class="btn btn-success">Continue to Quote</button>
                 <button id="skipObstacles" class="btn btn-secondary">No Buildings - Skip</button>
               </div>
@@ -96,10 +120,42 @@
           <div class="step-header">
             <span class="step-number">3</span>
             <h2>Get Your Quote</h2>
+            <span class="step-status" id="step3Status"></span>
           </div>
           <div class="step-content">
             <div class="quote-section">
               <p class="step-instruction">Fill out your contact information below and we'll calculate your personalized quote based on your property size.</p>
+              <ul class="step-tips">
+                <li>Pick a package to control photo count.</li>
+                <li>If the area looks off, go back and Readjust Boundary.</li>
+              </ul>
+              <div class="form-group">
+                <label for="quotePackage">Photo Package</label>
+                <select id="quotePackage" class="form-select" aria-label="Photo Package"></select>
+                <p class="help-text" id="quotePackageHint"></p>
+                <div class="package-summary is-hidden" id="quotePackageSummary">
+                  <div class="package-summary-item total">
+                    <span>Land shots:</span>
+                    <strong id="quotePackageLandCount">-</strong>
+                  </div>
+                  <div class="package-summary-item">
+                    <span>Top-down shots:</span>
+                    <strong id="quotePackageTopDownCount">-</strong>
+                  </div>
+                  <div class="package-summary-item">
+                    <span>Angled shots:</span>
+                    <strong id="quotePackageAngledCount">-</strong>
+                  </div>
+                  <div class="package-summary-item">
+                    <span>Building shots:</span>
+                    <strong id="quotePackageBuildingCount">-</strong>
+                  </div>
+                  <div class="package-summary-item">
+                    <span>Total photos:</span>
+                    <strong id="quotePackagePhotoCount">-</strong>
+                  </div>
+                </div>
+              </div>
               <form id="quoteForm" class="quote-form">
                 <div class="form-group">
                   <label for="quoteCustomerName">Your Name *</label>

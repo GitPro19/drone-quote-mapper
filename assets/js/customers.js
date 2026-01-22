@@ -1,8 +1,8 @@
 ﻿const Customers = {
   currentCustomer: null,
   init: () => {
-    Customers.renderList();
     Customers.setupEventListeners();
+    void Customers.renderList();
   },
   setupEventListeners: () => {
     document.getElementById('newCustomer').addEventListener('click', () => Customers.openModal());
@@ -14,11 +14,17 @@
     const list = document.getElementById('customerList');
     if (list) list.addEventListener('click', Customers.handleListClick);
   },
-  renderList: (filter = '') => {
+  renderList: async (filter = '') => {
     const list = document.getElementById('customerList');
-    const customers = Storage.customers.getAll();
+    if (!list) return;
+    let customers = [];
+    try {
+      customers = await Storage.customers.getAll();
+    } catch (e) {
+      console.error('Error loading customers:', e);
+    }
     const filtered = filter
-      ? customers.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()) || (c.email && c.email.toLowerCase().includes(filter.toLowerCase())))
+      ? customers.filter(c => (c.name || '').toLowerCase().includes(filter.toLowerCase()) || (c.email && c.email.toLowerCase().includes(filter.toLowerCase())))
       : customers;
     if (filtered.length === 0) {
       list.innerHTML = '<p class="empty-state">No customers found. Click "+ New Customer" to add one.</p>';
@@ -51,13 +57,13 @@
     if (action === 'edit') Customers.editCustomer(id);
     if (action === 'delete') Customers.deleteCustomer(id);
   },
-  filterCustomers: (search) => { Customers.renderList(search); },
-  openModal: (customerId = null) => {
+  filterCustomers: (search) => { void Customers.renderList(search); },
+  openModal: async (customerId = null) => {
     const modal = document.getElementById('customerModal');
     const form = document.getElementById('customerForm');
     const title = document.getElementById('customerModalTitle');
     if (customerId) {
-      const customer = Storage.customers.find(customerId);
+      const customer = await Storage.customers.find(customerId);
       if (customer) {
         title.textContent = 'Edit Customer';
         document.getElementById('customerId').value = customer.id;
@@ -74,7 +80,7 @@
     }
     modal.style.display = 'block';
   },
-  saveCustomer: () => {
+  saveCustomer: async () => {
     const id = document.getElementById('customerId').value;
     const customer = {
       name: document.getElementById('customerName').value,
@@ -83,34 +89,61 @@
       address: document.getElementById('customerAddress').value,
       notes: document.getElementById('customerNotes').value
     };
-    if (id) { Storage.customers.update(id, customer); } else { Storage.customers.add(customer); }
+    try {
+      if (id) {
+        await Storage.customers.update(id, customer);
+      } else {
+        await Storage.customers.add(customer);
+      }
+    } catch (e) {
+      console.error('Error saving customer:', e);
+      alert('Error saving customer. Please try again.');
+      return;
+    }
     document.getElementById('customerModal').style.display = 'none';
-    Customers.renderList();
-    Customers.updateQuoteCustomerSelect();
+    await Customers.renderList();
+    await Customers.updateQuoteCustomerSelect();
   },
   editCustomer: (id) => { Customers.openModal(id); },
-  deleteCustomer: (id) => {
+  deleteCustomer: async (id) => {
     if (confirm('Are you sure you want to delete this customer?')) {
-      Storage.customers.delete(id);
-      Customers.renderList();
+      try {
+        await Storage.customers.delete(id);
+        await Customers.renderList();
+      } catch (e) {
+        console.error('Error deleting customer:', e);
+        alert('Error deleting customer. Please try again.');
+        return;
+      }
       if (Customers.currentCustomer === id) {
         Customers.currentCustomer = null;
         document.getElementById('lotSection').classList.add('is-hidden');
       }
     }
   },
-  selectCustomer: (id) => {
+  selectCustomer: async (id) => {
     Customers.currentCustomer = id;
-    const customer = Storage.customers.find(id);
+    const customer = await Storage.customers.find(id);
+    if (!customer) return;
     document.getElementById('selectedCustomerInfo').innerHTML = `<h4>${Utils.escapeHtml(customer.name)}</h4>${customer.email ? `<div>${Utils.escapeHtml(customer.email)}</div>` : ''}${customer.phone ? `<div>${Utils.escapeHtml(customer.phone)}</div>` : ''}`;
     document.getElementById('lotSection').classList.remove('is-hidden');
     if (typeof LotHistory !== 'undefined') LotHistory.renderList(id);
-    Customers.updateQuoteCustomerSelect();
+    await Customers.updateQuoteCustomerSelect();
   },
-  updateQuoteCustomerSelect: () => {
+  updateQuoteCustomerSelect: async () => {
     const select = document.getElementById('quoteCustomer');
-    const customers = Storage.customers.getAll();
-    select.innerHTML = '<option value="">Select customer...</option>' + customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    if (Customers.currentCustomer) { select.value = Customers.currentCustomer; }
+    if (!select) return;
+    let list = [];
+    try {
+      list = await Storage.customers.getAll();
+    } catch (e) {
+      console.error('Error loading customers for quote:', e);
+    }
+    if (select.tagName && select.tagName.toLowerCase() === 'select') {
+      select.innerHTML = '<option value="">Select customer...</option>' + list.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      if (Customers.currentCustomer) { select.value = Customers.currentCustomer; }
+    } else if (Customers.currentCustomer) {
+      select.value = Customers.currentCustomer;
+    }
   }
 };

@@ -5,10 +5,17 @@ const Measurements = {
     try {
       let geometry;
       const lngLat = Measurements.toLngLat(coordinates);
+      const ring = (() => {
+        if (lngLat.length === 0) return lngLat;
+        const first = lngLat[0];
+        const last = lngLat[lngLat.length - 1];
+        const isClosed = Math.abs(first[0] - last[0]) < 1e-12 && Math.abs(first[1] - last[1]) < 1e-12;
+        return isClosed ? lngLat : [...lngLat, [first[0], first[1]]];
+      })();
       if (type === 'Polygon' || type === 'Rectangle') {
-        geometry = turf.polygon([lngLat]);
+        geometry = turf.polygon([ring]);
       } else {
-        geometry = turf.polygon([lngLat]);
+        geometry = turf.polygon([ring]);
       }
       const areaSqMeters = turf.area(geometry);
       return {

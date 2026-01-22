@@ -17,6 +17,28 @@ const CONFIG = {
     minimumPrice: 100,
     photoMultiplier: 1.0
   },
+  photoPackages: [
+    { id: 'economy', name: 'Economy', description: 'Fewer photos, faster turnaround.', landPhotos: 15, topDownShots: 2, spacingMultiplier: 1.4, altitudeMultiplier: 1.3 },
+    { id: 'standard', name: 'Standard', description: 'Balanced coverage for most properties.', landPhotos: 30, topDownShots: 3, spacingMultiplier: 1.0, altitudeMultiplier: 1.0 },
+    { id: 'premium', name: 'Premium', description: 'Maximum detail with multiple angles.', landPhotos: 50, topDownShots: 4, spacingMultiplier: 0.85, altitudeMultiplier: 0.9 }
+  ],
+  defaultPackageId: 'standard',
+  buildingShotCounts: {
+    house: 5,
+    garage: 4,
+    shed: 3,
+    barn: 5,
+    dock: 4,
+    default: 4
+  },
+  buildingShotRadii: {
+    house: 18,
+    garage: 12,
+    shed: 10,
+    barn: 20,
+    dock: 14,
+    default: 12
+  },
   droneSpecs: {
     model: 'DJI Mini 3',
     sensorWidth: 15.7,

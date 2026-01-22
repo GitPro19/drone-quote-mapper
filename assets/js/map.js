@@ -8,6 +8,7 @@ const MapManager = {
   coordinateDisplay: null,
   flightPathLayer: null,
   showFlightPath: false,
+  lastFlightPath: null,
   addressMarker: null,
   
   // Plotting visualization
@@ -24,9 +25,13 @@ const MapManager = {
     // Delay slightly to ensure DOM is fully ready
     setTimeout(() => {
       MapManager.createMap();
+      if (!MapManager.map) return;
       MapManager.setupPlotting();
       MapManager.setupEventListeners();
       MapManager.setupCoordinateDisplay();
+      if (typeof LandPlotting !== 'undefined' && LandPlotting.updateWorkflowSteps) {
+        LandPlotting.updateWorkflowSteps();
+      }
     }, 50);
   },
 
@@ -100,6 +105,8 @@ const MapManager = {
       MapManager.satelliteLayer.addTo(MapManager.map);
       MapManager.labelsLayer.addTo(MapManager.map);
       MapManager.currentLayer = MapManager.satelliteLayer;
+      const toggleSatelliteBtn = document.getElementById('toggleSatellite');
+      if (toggleSatelliteBtn) toggleSatelliteBtn.textContent = 'Map';
       
       // Invalidate size
       MapManager.map.invalidateSize();
@@ -186,12 +193,25 @@ const MapManager = {
     
     // Obstacle marking
     const markHouseBtn = document.getElementById('markHouse');
+    const obstacleTypeSelect = document.getElementById('obstacleType');
     const finishObstaclesBtn = document.getElementById('finishObstacleMarking');
     const skipObstaclesBtn = document.getElementById('skipObstacles');
+    const readjustBtn = document.getElementById('readjustPlotting');
     
     if (markHouseBtn) {
       markHouseBtn.addEventListener('click', () => {
-        MapManager.enterObstacleMarkingMode('house');
+        MapManager.enterObstacleMarkingMode();
+      });
+    }
+
+    if (obstacleTypeSelect) {
+      obstacleTypeSelect.addEventListener('change', () => {
+        const type = obstacleTypeSelect.value || 'house';
+        if (typeof LandPlotting !== 'undefined') {
+          MapManager.setObstacleMarkingUI(LandPlotting.isMarkingObstacles, type);
+        } else {
+          MapManager.setObstacleMarkingUI(false, type);
+        }
       });
     }
     
@@ -207,6 +227,14 @@ const MapManager = {
       skipObstaclesBtn.addEventListener('click', () => {
         if (typeof LandPlotting !== 'undefined') {
           LandPlotting.skipObstacles();
+        }
+      });
+    }
+
+    if (readjustBtn) {
+      readjustBtn.addEventListener('click', () => {
+        if (typeof LandPlotting !== 'undefined') {
+          LandPlotting.readjustLastPlot();
         }
       });
     }
@@ -286,26 +314,30 @@ const MapManager = {
   updateAllMeasurements: () => {
     if (typeof LandPlotting === 'undefined') return;
     
-    const plots = LandPlotting.getAllPlots();
+    const latestPlot = LandPlotting.getLatestPlot?.();
+    const currentPlot = LandPlotting.getCurrentPlot();
     const unit = document.getElementById('measurementUnit')?.value || 'acres';
     
-    if (plots.length === 0) {
+    const hasCurrentArea = LandPlotting.isPlotting && currentPlot && currentPlot.area;
+    const hasLatestArea = !LandPlotting.isPlotting && latestPlot && latestPlot.area;
+    if (!hasCurrentArea && !hasLatestArea) {
       const measurementValue = document.getElementById('measurementValue');
-      const measurementUnit = document.getElementById('measurementUnit');
       if (measurementValue) measurementValue.textContent = '0';
-      if (measurementUnit) measurementUnit.textContent = unit;
+      const measurementUnitLabel = document.getElementById('measurementUnitLabel');
+      if (measurementUnitLabel) measurementUnitLabel.textContent = unit;
       return;
     }
     
     let totalAreaSqMeters = 0;
     let totalPerimeterFeet = 0;
     
-    plots.forEach((plot) => {
-      if (plot.area) {
-        totalAreaSqMeters += plot.area.sqmeters || 0;
-        totalPerimeterFeet += plot.perimeter?.feet || 0;
-      }
-    });
+    if (hasCurrentArea) {
+      totalAreaSqMeters = currentPlot.area.sqmeters || 0;
+      totalPerimeterFeet = currentPlot.perimeter?.feet || 0;
+    } else if (hasLatestArea) {
+      totalAreaSqMeters = latestPlot.area.sqmeters || 0;
+      totalPerimeterFeet = latestPlot.perimeter?.feet || 0;
+    }
     
     if (totalAreaSqMeters > 0) {
       // Convert total to selected unit
@@ -341,17 +373,10 @@ const MapManager = {
       if (quoteAreaUnit) quoteAreaUnit.value = unit;
       
       // Auto-trigger coverage calculation and quote update
-      if (typeof CoverageCalculator !== 'undefined' && plots.length > 0) {
-        const allBounds = MapManager.getAllPlotsBounds();
-        if (allBounds && allBounds.isValid()) {
-          const combinedCoords = [
-            [allBounds.getSouthWest().lat, allBounds.getSouthWest().lng],
-            [allBounds.getNorthWest().lat, allBounds.getNorthWest().lng],
-            [allBounds.getNorthEast().lat, allBounds.getNorthEast().lng],
-            [allBounds.getSouthEast().lat, allBounds.getSouthEast().lng],
-            [allBounds.getSouthWest().lat, allBounds.getSouthWest().lng]
-          ];
-          MapManager.autoCalculateCoverage(combinedCoords, totalArea);
+      if (typeof CoverageCalculator !== 'undefined' && (hasCurrentArea || hasLatestArea)) {
+        const activeCoords = LandPlotting.getActivePlotCoordinates?.();
+        if (activeCoords) {
+          MapManager.autoCalculateCoverage(activeCoords, totalArea);
         }
       }
       
@@ -364,15 +389,20 @@ const MapManager = {
   
   getAllPlotsBounds: () => {
     if (typeof LandPlotting === 'undefined') return null;
-    const plots = LandPlotting.getAllPlots();
-    if (plots.length === 0) return null;
+    const currentPlot = LandPlotting.getCurrentPlot();
+    const latestPlot = LandPlotting.getLatestPlot?.();
+    if (!currentPlot && !latestPlot) return null;
     
     const allPoints = [];
-    plots.forEach(plot => {
-      plot.points.forEach(point => {
+    if (LandPlotting.isPlotting && currentPlot) {
+      currentPlot.points.forEach(point => {
         allPoints.push([point.lat, point.lng]);
       });
-    });
+    } else if (latestPlot) {
+      latestPlot.points.forEach(point => {
+        allPoints.push([point.lat, point.lng]);
+      });
+    }
     
     if (allPoints.length === 0) return null;
     
@@ -408,6 +438,15 @@ const MapManager = {
     const altitude = altitudeEl ? parseFloat(altitudeEl.value) : (CONFIG.droneSpecs?.defaultAltitude || 60);
     const frontOverlap = frontOverlapEl ? parseFloat(frontOverlapEl.value) : (CONFIG.coverageDefaults?.frontOverlap || 70);
     const sideOverlap = sideOverlapEl ? parseFloat(sideOverlapEl.value) : (CONFIG.coverageDefaults?.sideOverlap || 60);
+    const packageOptions = (typeof Quote !== 'undefined' && Quote.getSelectedPackageOptions)
+      ? Quote.getSelectedPackageOptions()
+      : {};
+    const activePlot = (typeof LandPlotting !== 'undefined' && LandPlotting.getActivePlot)
+      ? LandPlotting.getActivePlot()
+      : null;
+    const photoPlan = (typeof Quote !== 'undefined' && Quote.getPhotoPlan)
+      ? Quote.getPhotoPlan(activePlot)
+      : null;
     
     // Calculate coverage
     const result = CoverageCalculator.calculate(
@@ -416,14 +455,30 @@ const MapManager = {
       altitude,
       frontOverlap,
       sideOverlap,
-      CONFIG.droneSpecs
+      CONFIG.droneSpecs,
+      {
+        ...packageOptions,
+        landPhotos: photoPlan?.landPhotos ?? packageOptions.landPhotos,
+        topDownShots: photoPlan?.topDownShots ?? packageOptions.topDownShots
+      }
     );
     
     if (result) {
+      const totalPhotos = photoPlan?.totalPhotos || result.photos.recommended;
+      if (photoPlan && typeof Quote !== 'undefined') {
+        Quote.lastPhotoPlan = photoPlan;
+        if (Quote.updatePackageSummary) {
+          Quote.updatePackageSummary(photoPlan);
+        }
+      }
       // Update photo count in quote form
       const photoCountEl = document.getElementById('quotePhotoCount');
       if (photoCountEl) {
-        photoCountEl.value = result.photos.recommended;
+        photoCountEl.value = totalPhotos;
+      }
+      const packageCountEl = document.getElementById('quotePackagePhotoCount');
+      if (packageCountEl) {
+        packageCountEl.textContent = totalPhotos.toLocaleString();
       }
       
       // Update price if base price is set
@@ -456,38 +511,101 @@ const MapManager = {
 
 
   updateFlightPath: (flightPath) => {
-    if (!flightPath || !flightPath.waypoints) return;
+    const hasLines = Array.isArray(flightPath?.waypoints) && flightPath.waypoints.length > 0;
+    const hasShots = Array.isArray(flightPath?.shotPoints) && flightPath.shotPoints.length > 0;
+    const hasOrbits = Array.isArray(flightPath?.orbits) && flightPath.orbits.length > 0;
+    if (!hasLines && !hasShots && !hasOrbits) return;
+    MapManager.lastFlightPath = flightPath;
+    if (MapManager.shouldShowFlightPath && !MapManager.shouldShowFlightPath()) {
+      MapManager.clearFlightPath();
+      MapManager.showFlightPath = false;
+      return;
+    }
     
     // Remove existing flight path
     if (MapManager.flightPathLayer) {
       MapManager.map.removeLayer(MapManager.flightPathLayer);
     }
     
+    const flightPane = MapManager.map.getPane('flightPath') || MapManager.map.createPane('flightPath');
+    if (flightPane) {
+      flightPane.style.zIndex = 430;
+      flightPane.style.pointerEvents = 'none';
+    }
+
     MapManager.flightPathLayer = new L.FeatureGroup();
     
     // Draw flight lines
-    flightPath.waypoints.forEach((line, lineIndex) => {
-      const latlngs = line.map(wp => [wp[0], wp[1]]);
-      const polyline = L.polyline(latlngs, {
-        color: '#FF9800',
-        weight: 2,
-        opacity: 0.7,
-        dashArray: '10, 5'
+    const waypoints = Array.isArray(flightPath.waypoints) ? flightPath.waypoints : [];
+    const maxLines = 12;
+    const lineStride = waypoints.length ? Math.max(1, Math.ceil(waypoints.length / maxLines)) : 1;
+    waypoints.forEach((line, lineIndex) => {
+      if (lineIndex % lineStride !== 0 && lineIndex !== waypoints.length - 1) return;
+      const maxPoints = 14;
+      const pointStride = Math.max(1, Math.ceil(line.length / maxPoints));
+      const sampled = line.filter((_, idx) => idx % pointStride === 0 || idx === line.length - 1);
+      const latlngs = sampled.map(wp => [wp[0], wp[1]]);
+      if (latlngs.length < 2) return;
+      const glow = L.polyline(latlngs, {
+        color: '#22d3ee',
+        weight: 5,
+        opacity: 0.2,
+        lineCap: 'round',
+        lineJoin: 'round',
+        pane: 'flightPath'
       });
+      const polyline = L.polyline(latlngs, {
+        color: '#f59e0b',
+        weight: 2,
+        opacity: 0.6,
+        dashArray: '8 10',
+        lineCap: 'round',
+        lineJoin: 'round',
+        pane: 'flightPath'
+      });
+      MapManager.flightPathLayer.addLayer(glow);
       MapManager.flightPathLayer.addLayer(polyline);
-      
-      // Add waypoint markers
-      line.forEach((wp, wpIndex) => {
-        const marker = L.circleMarker([wp[0], wp[1]], {
-          radius: 4,
-          fillColor: '#FF9800',
-          color: '#fff',
-          weight: 2,
-          fillOpacity: 0.8
-        });
-        marker.bindTooltip(`Photo ${lineIndex * flightPath.photosPerLine + wpIndex + 1}`, {
-          permanent: false,
-          direction: 'top'
+    });
+
+    const shotPoints = Array.isArray(flightPath.shotPoints) ? flightPath.shotPoints : [];
+    shotPoints.forEach((shot) => {
+      const isTopDown = shot.type === 'top-down';
+      const marker = L.circleMarker([shot.lat, shot.lng], {
+        radius: isTopDown ? 4 : 3,
+        fillColor: isTopDown ? '#38bdf8' : '#f59e0b',
+        color: '#0f172a',
+        weight: 1,
+        opacity: 0.9,
+        fillOpacity: 0.95,
+        pane: 'flightPath'
+      });
+      MapManager.flightPathLayer.addLayer(marker);
+    });
+
+    const orbits = Array.isArray(flightPath.orbits) ? flightPath.orbits : [];
+    orbits.forEach((orbit) => {
+      if (!orbit.points || orbit.points.length === 0) return;
+      const orbitLatLngs = orbit.points.map(point => [point[0], point[1]]);
+      const closed = orbitLatLngs.length > 1 ? [...orbitLatLngs, orbitLatLngs[0]] : orbitLatLngs;
+      const orbitLine = L.polyline(closed, {
+        color: '#10b981',
+        weight: 2,
+        opacity: 0.6,
+        dashArray: '4 6',
+        lineCap: 'round',
+        lineJoin: 'round',
+        pane: 'flightPath'
+      });
+      MapManager.flightPathLayer.addLayer(orbitLine);
+      orbitLatLngs.forEach((point) => {
+        const marker = L.circleMarker([point[0], point[1]], {
+          radius: 3,
+          fillColor: '#10b981',
+          color: '#0f172a',
+          weight: 1,
+          opacity: 0.9,
+          fillOpacity: 0.9,
+          pane: 'flightPath'
         });
         MapManager.flightPathLayer.addLayer(marker);
       });
@@ -499,6 +617,23 @@ const MapManager = {
     // Fit bounds to show entire flight path
     if (MapManager.flightPathLayer.getBounds().isValid()) {
       MapManager.map.fitBounds(MapManager.flightPathLayer.getBounds(), { padding: [50, 50] });
+    }
+  },
+
+  shouldShowFlightPath: () => {
+    const step3 = document.getElementById('workflowStep3');
+    return !!(step3 && step3.classList.contains('active'));
+  },
+
+  refreshFlightPath: () => {
+    if (!MapManager.lastFlightPath) {
+      MapManager.clearFlightPath();
+      return;
+    }
+    if (MapManager.shouldShowFlightPath()) {
+      MapManager.updateFlightPath(MapManager.lastFlightPath);
+    } else {
+      MapManager.clearFlightPath();
     }
   },
 
@@ -617,7 +752,7 @@ const MapManager = {
     MapManager.updateAreaPreview();
   },
 
-  createPointMarker: (lat, lng, index, isStart, isCurrent) => {
+  createPointMarker: (lat, lng, index, isStart, isCurrent, draggable = true) => {
     let color = '#3388ff'; // Blue for intermediate
     let label = (index + 1).toString();
     
@@ -637,7 +772,7 @@ const MapManager = {
         iconSize: [30, 30],
         iconAnchor: [15, 15]
       }),
-      draggable: true
+      draggable: draggable
     });
   },
 
@@ -719,8 +854,8 @@ const MapManager = {
     
     // Draw points
     plot.points.forEach((point, index) => {
-      const marker = MapManager.createPointMarker(point.lat, point.lng, index, index === 0, false);
-      MapManager.plotMarkersLayer.addLayer(marker);
+    const marker = MapManager.createPointMarker(point.lat, point.lng, index, index === 0, false, false);
+    MapManager.plotMarkersLayer.addLayer(marker);
     });
     
     // Draw lines
@@ -773,21 +908,57 @@ const MapManager = {
         MapManager.map.off('click', obstacleClickHandler);
         return;
       }
-      const obstacle = LandPlotting.addObstacle(currentPlot.id, e.latlng.lat, e.latlng.lng, type);
+      const typeSelect = document.getElementById('obstacleType');
+      const selectedType = typeSelect?.value || type || 'house';
+      const obstacle = LandPlotting.addObstacle(currentPlot.id, e.latlng.lat, e.latlng.lng, selectedType);
       MapManager.updateObstaclesList();
     };
     
     MapManager.map.on('click', obstacleClickHandler);
     MapManager.map.getContainer().style.cursor = 'crosshair';
+
+    const activeType = document.getElementById('obstacleType')?.value || type || 'house';
+    MapManager.setObstacleMarkingUI(true, activeType);
     
     LandPlotting.updateWorkflowSteps();
   },
 
+  getObstacleIcon: (type) => {
+    const normalized = String(type || 'house').toLowerCase();
+    if (normalized === 'garage') return { type: 'garage', label: 'G' };
+    if (normalized === 'shed') return { type: 'shed', label: 'S' };
+    if (normalized === 'barn') return { type: 'barn', label: 'B' };
+    if (normalized === 'dock') return { type: 'dock', label: 'D' };
+    return { type: 'house', label: 'H' };
+  },
+
+  setObstacleMarkingUI: (isActive, type) => {
+    const button = document.getElementById('markHouse');
+    const hint = document.getElementById('markBuildingHint');
+    const selectedType = type || document.getElementById('obstacleType')?.value || 'building';
+    const label = typeof LandPlotting !== 'undefined' && LandPlotting.getObstacleLabelForType
+      ? LandPlotting.getObstacleLabelForType(selectedType)
+      : selectedType;
+    if (button) {
+      button.dataset.active = isActive ? 'true' : 'false';
+      button.textContent = isActive ? `Click map to place ${label}` : 'Mark a Building';
+    }
+    if (hint) {
+      if (isActive) {
+        hint.textContent = `Click on the map to place a ${label}.`;
+        hint.classList.remove('is-hidden');
+      } else {
+        hint.classList.add('is-hidden');
+      }
+    }
+  },
+
   addObstacleMarker: (obstacle) => {
+    const icon = MapManager.getObstacleIcon(obstacle.type);
     const marker = L.marker([obstacle.position.lat, obstacle.position.lng], {
       icon: L.divIcon({
         className: 'obstacle-marker obstacle-marker-' + obstacle.type,
-        html: `<div class="obstacle-marker-inner">🏠</div>`,
+        html: `<div class="obstacle-marker-inner obstacle-marker-${icon.type}"><span class="obstacle-marker-label">${icon.label}</span></div>`,
         iconSize: [24, 24],
         iconAnchor: [12, 12]
       }),
@@ -837,13 +1008,13 @@ const MapManager = {
     if (!obstaclesList) return;
     
     if (!currentPlot.obstacles || currentPlot.obstacles.length === 0) {
-      obstaclesList.innerHTML = '<p class="empty-state">No houses marked yet</p>';
+      obstaclesList.innerHTML = '<p class="empty-state">No buildings marked yet</p>';
       return;
     }
     
     obstaclesList.innerHTML = currentPlot.obstacles.map((obs, index) => `
       <div class="obstacle-item">
-        <span>House ${index + 1}</span>
+        <input type="text" class="form-input obstacle-name-input" data-id="${obs.id}" value="${Utils.escapeHtml(obs.name || `${LandPlotting.getObstacleLabelForType(obs.type)} ${index + 1}`)}" aria-label="Building name">
         <button class="btn-icon delete-obstacle" data-id="${obs.id}">Delete</button>
       </div>
     `).join('');
@@ -852,6 +1023,27 @@ const MapManager = {
       btn.addEventListener('click', () => {
         LandPlotting.removeObstacle(currentPlot.id, btn.dataset.id);
         MapManager.updateObstaclesList();
+      });
+    });
+
+    obstaclesList.querySelectorAll('.obstacle-name-input').forEach(input => {
+      const saveName = () => {
+        const obstacle = currentPlot.obstacles.find(o => o.id === input.dataset.id);
+        if (!obstacle) return;
+        const nextName = input.value.trim();
+        if (!nextName) {
+          input.value = obstacle.name || `${LandPlotting.getObstacleLabelForType(obstacle.type)} ${currentPlot.obstacles.indexOf(obstacle) + 1}`;
+          return;
+        }
+        LandPlotting.renameObstacle(currentPlot.id, obstacle.id, nextName);
+        MapManager.updateObstaclesList();
+      };
+      input.addEventListener('blur', saveName);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          input.blur();
+        }
       });
     });
   },

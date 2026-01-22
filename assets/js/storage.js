@@ -10,6 +10,61 @@
       typeof CONFIG !== 'undefined' && CONFIG.supabase && CONFIG.supabase.url && CONFIG.supabase.anonKey;
   }
 
+  function safeJsonParse(value, fallback) {
+    try {
+      return JSON.parse(value);
+    } catch (e) {
+      console.error('Storage parse error:', e);
+      return fallback;
+    }
+  }
+
+  function readLocalList(key) {
+    if (!key) return [];
+    const raw = localStorage.getItem(key);
+    return raw ? safeJsonParse(raw, []) : [];
+  }
+
+  function writeLocalList(key, list) {
+    if (!key) return;
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (e) {
+      console.error('Storage write error:', e);
+    }
+  }
+
+  function createId(prefix) {
+    return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+  }
+
+  async function getSupabaseUser() {
+    if (!supabaseReady()) return null;
+    try {
+      const { data: { user } } = await window.supabase.auth.getUser();
+      return user || null;
+    } catch (e) {
+      console.error('Supabase auth error:', e);
+      return null;
+    }
+  }
+
+  function getLocalCustomers() {
+    return readLocalList(CONFIG?.storageKeys?.customers);
+  }
+
+  function saveLocalCustomers(customers) {
+    writeLocalList(CONFIG?.storageKeys?.customers, customers);
+  }
+
+  function getLocalQuotes() {
+    return readLocalList(CONFIG?.storageKeys?.quotes);
+  }
+
+  function saveLocalQuotes(quotes) {
+    writeLocalList(CONFIG?.storageKeys?.quotes, quotes);
+  }
+
   function toCustomerRow(c) {
     return {
       id: c.id,
@@ -65,17 +120,27 @@
       cacheDirty = false;
       return;
     }
-    const { data: { user } } = await window.supabase.auth.getUser();
+    const user = await getSupabaseUser();
     if (!user) {
       customerCache.length = 0;
       quoteCache.length = 0;
       cacheDirty = false;
       return;
     }
-    const [custRes, quoteRes] = await Promise.all([
-      window.supabase.from('customers').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-      window.supabase.from('quotes').select('*').order('created_at', { ascending: false })
-    ]);
+    const custRes = await window.supabase
+      .from('customers')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    const customerIds = custRes.data ? custRes.data.map(c => c.id) : [];
+    let quoteRes = { data: [] };
+    if (customerIds.length > 0) {
+      quoteRes = await window.supabase
+        .from('quotes')
+        .select('*')
+        .in('customer_id', customerIds)
+        .order('created_at', { ascending: false });
+    }
     customerCache.length = 0;
     quoteCache.length = 0;
     if (custRes.data) custRes.data.forEach(c => customerCache.push(toCustomerRow(c)));
@@ -90,14 +155,35 @@
   const Storage = {
     customers: {
       getAll: async () => {
+        const user = await getSupabaseUser();
+        if (!user) return getLocalCustomers();
         await ensureCache();
         return customerCache.slice();
       },
-      save: (_customers) => { /* no-op when using Supabase */ },
+      save: (customers) => {
+        if (!supabaseReady()) {
+          saveLocalCustomers(customers || []);
+        }
+      },
       add: async (customer) => {
-        if (!supabaseReady()) throw new Error('Supabase not configured');
-        const { data: { user } } = await window.supabase.auth.getUser();
-        if (!user) throw new Error('Must be signed in to add customers');
+        const user = await getSupabaseUser();
+        if (!user) {
+          const customers = getLocalCustomers();
+          const now = new Date().toISOString();
+          const record = {
+            id: customer.id || createId('cust'),
+            email: (customer.email || '').trim(),
+            name: (customer.name || '').trim(),
+            phone: (customer.phone || '').trim(),
+            address: (customer.address || '').trim(),
+            notes: (customer.notes || '').trim(),
+            createdAt: now,
+            updatedAt: now
+          };
+          customers.unshift(record);
+          saveLocalCustomers(customers);
+          return record;
+        }
         const row = {
           email: (customer.email || '').trim(),
           name: (customer.name || '').trim(),
@@ -112,9 +198,21 @@
         return toCustomerRow(data);
       },
       update: async (id, updates) => {
-        if (!supabaseReady()) throw new Error('Supabase not configured');
-        const { data: { user } } = await window.supabase.auth.getUser();
-        if (!user) throw new Error('Must be signed in to update customers');
+        const user = await getSupabaseUser();
+        if (!user) {
+          const customers = getLocalCustomers();
+          const index = customers.findIndex(c => c.id === id);
+          if (index === -1) return null;
+          const next = { ...customers[index], updatedAt: new Date().toISOString() };
+          if (updates.name !== undefined) next.name = String(updates.name).trim();
+          if (updates.email !== undefined) next.email = String(updates.email).trim();
+          if (updates.phone !== undefined) next.phone = (updates.phone && String(updates.phone).trim()) || '';
+          if (updates.address !== undefined) next.address = (updates.address && String(updates.address).trim()) || '';
+          if (updates.notes !== undefined) next.notes = String(updates.notes).trim();
+          customers[index] = next;
+          saveLocalCustomers(customers);
+          return next;
+        }
         const row = {};
         if (updates.name !== undefined) row.name = String(updates.name).trim();
         if (updates.email !== undefined) row.email = String(updates.email).trim();
@@ -127,9 +225,13 @@
         return data ? toCustomerRow(data) : null;
       },
       delete: async (id) => {
-        if (!supabaseReady()) throw new Error('Supabase not configured');
-        const { data: { user } } = await window.supabase.auth.getUser();
-        if (!user) throw new Error('Must be signed in to delete customers');
+        const user = await getSupabaseUser();
+        if (!user) {
+          const customers = getLocalCustomers();
+          const filtered = customers.filter(c => c.id !== id);
+          saveLocalCustomers(filtered);
+          return filtered.length < customers.length;
+        }
         const { error } = await window.supabase.from('customers').delete().eq('id', id).eq('user_id', user.id);
         if (error) throw error;
         invalidateCache();
@@ -137,6 +239,10 @@
         return true;
       },
       find: async (id) => {
+        const user = await getSupabaseUser();
+        if (!user) {
+          return getLocalCustomers().find(c => c.id === id) || null;
+        }
         await ensureCache();
         return customerCache.find(c => c.id === id) || null;
       }
@@ -209,14 +315,43 @@
 
     quotes: {
       getAll: async () => {
+        const user = await getSupabaseUser();
+        if (!user) return getLocalQuotes();
         await ensureCache();
         return quoteCache.slice();
       },
-      save: (_quotes) => { /* no-op when using Supabase */ },
+      save: (quotes) => {
+        if (!supabaseReady()) {
+          saveLocalQuotes(quotes || []);
+        }
+      },
       add: async (quote) => {
-        if (!supabaseReady()) throw new Error('Supabase not configured');
-        const { data: { user } } = await window.supabase.auth.getUser();
-        if (!user) throw new Error('Must be signed in to create quotes');
+        const user = await getSupabaseUser();
+        if (!user) {
+          const quotes = getLocalQuotes();
+          const now = new Date().toISOString();
+          const record = {
+            id: quote.id || createId('quote'),
+            customerId: quote.customerId,
+            quoteNumber: quote.quoteNumber || '',
+            serviceType: quote.serviceType,
+            serviceName: quote.serviceName || '',
+            area: Number(quote.area) || 0,
+            areaUnit: quote.areaUnit || 'acres',
+            photoCount: Number(quote.photoCount) || 0,
+            basePrice: Number(quote.basePrice) || 0,
+            areaCost: Number(quote.areaCost) || 0,
+            photoCost: Number(quote.photoCost) || 0,
+            total: Number(quote.total) || 0,
+            status: quote.status || 'pending',
+            plotData: quote.plotData || null,
+            date: quote.date || now,
+            requestedDate: quote.requestedDate || now
+          };
+          quotes.unshift(record);
+          saveLocalQuotes(quotes);
+          return record;
+        }
         const row = {
           customer_id: quote.customerId,
           service_type: quote.serviceType,
@@ -239,32 +374,70 @@
         return toQuoteRow(data);
       },
       update: async (id, updates) => {
-        if (!supabaseReady()) throw new Error('Supabase not configured');
+        const user = await getSupabaseUser();
+        if (!user) {
+          const quotes = getLocalQuotes();
+          const index = quotes.findIndex(q => q.id === id);
+          if (index === -1) return null;
+          const next = { ...quotes[index], ...updates };
+          quotes[index] = next;
+          saveLocalQuotes(quotes);
+          return next;
+        }
+        await ensureCache();
+        const existing = quoteCache.find(q => q.id === id);
+        if (!existing) return null;
         const row = {};
         if (updates.status !== undefined) row.status = updates.status;
         if (Object.keys(row).length === 0) {
-          const q = quoteCache.find(x => x.id === id);
-          return q ? { ...q, ...updates } : null;
+          return existing ? { ...existing, ...updates } : null;
         }
-        const { data, error } = await window.supabase.from('quotes').update(row).eq('id', id).select('*').single();
+        const { data, error } = await window.supabase
+          .from('quotes')
+          .update(row)
+          .eq('id', id)
+          .eq('customer_id', existing.customerId)
+          .select('*')
+          .single();
         if (error) throw error;
         invalidateCache();
         await ensureCache();
         return data ? toQuoteRow(data) : null;
       },
       delete: async (id) => {
-        if (!supabaseReady()) throw new Error('Supabase not configured');
-        const { error } = await window.supabase.from('quotes').delete().eq('id', id);
+        const user = await getSupabaseUser();
+        if (!user) {
+          const quotes = getLocalQuotes();
+          const filtered = quotes.filter(q => q.id !== id);
+          saveLocalQuotes(filtered);
+          return filtered.length < quotes.length;
+        }
+        await ensureCache();
+        const existing = quoteCache.find(q => q.id === id);
+        if (!existing) return false;
+        const { error } = await window.supabase
+          .from('quotes')
+          .delete()
+          .eq('id', id)
+          .eq('customer_id', existing.customerId);
         if (error) throw error;
         invalidateCache();
         await ensureCache();
         return true;
       },
       findByCustomer: async (customerId) => {
+        const user = await getSupabaseUser();
+        if (!user) {
+          return getLocalQuotes().filter(q => q.customerId === customerId);
+        }
         await ensureCache();
         return quoteCache.filter(q => q.customerId === customerId);
       },
       find: async (id) => {
+        const user = await getSupabaseUser();
+        if (!user) {
+          return getLocalQuotes().find(q => q.id === id) || null;
+        }
         await ensureCache();
         return quoteCache.find(q => q.id === id) || null;
       }
@@ -275,11 +448,12 @@
     },
 
     exportAll: async () => {
-      if (supabaseReady()) await ensureCache();
+      const user = await getSupabaseUser();
+      if (user) await ensureCache();
       return {
-        customers: customerCache.slice(),
+        customers: user ? customerCache.slice() : getLocalCustomers(),
         lots: Storage.lots.getAll(),
-        quotes: quoteCache.slice(),
+        quotes: user ? quoteCache.slice() : getLocalQuotes(),
         settings: localStorage.getItem(CONFIG.storageKeys.settings),
         exportDate: new Date().toISOString()
       };
@@ -287,7 +461,9 @@
 
     importAll: (data) => {
       try {
+        if (data.customers) saveLocalCustomers(data.customers);
         if (data.lots) Storage.lots.save(data.lots);
+        if (data.quotes) saveLocalQuotes(data.quotes);
         if (data.settings) localStorage.setItem(CONFIG.storageKeys.settings, data.settings);
         return true;
       } catch (e) {

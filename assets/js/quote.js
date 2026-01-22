@@ -1,8 +1,10 @@
 const Quote = {
+  lastPhotoPlan: null,
   init: () => {
     Quote.setupEventListeners();
     Quote.populateServiceTypes();
-    Quote.renderList();
+    Quote.populatePackages();
+    void Quote.renderList();
   },
   setupEventListeners: () => {
     document.getElementById('quoteForm').addEventListener('submit', (e) => {
@@ -43,6 +45,100 @@ const Quote = {
         });
       }
     });
+
+    const packageSelect = document.getElementById('quotePackage');
+    if (packageSelect) {
+      packageSelect.addEventListener('change', () => {
+        Quote.updatePackageHint();
+        Quote.calculateCoverage();
+        Quote.updateQuoteDisplay();
+      });
+    }
+  },
+  getPhotoPackages: () => {
+    if (CONFIG.photoPackages && Array.isArray(CONFIG.photoPackages) && CONFIG.photoPackages.length > 0) {
+      return CONFIG.photoPackages;
+    }
+    return [
+      { id: 'economy', name: 'Economy', description: 'Fewer photos, faster turnaround.', landPhotos: 15, topDownShots: 2, spacingMultiplier: 1.4, altitudeMultiplier: 1.3 },
+      { id: 'standard', name: 'Standard', description: 'Balanced coverage for most properties.', landPhotos: 30, topDownShots: 3, spacingMultiplier: 1.0, altitudeMultiplier: 1.0 },
+      { id: 'premium', name: 'Premium', description: 'Maximum detail with multiple angles.', landPhotos: 50, topDownShots: 4, spacingMultiplier: 0.85, altitudeMultiplier: 0.9 }
+    ];
+  },
+  getSelectedPackage: () => {
+    const packages = Quote.getPhotoPackages();
+    const select = document.getElementById('quotePackage');
+    const selectedId = select?.value || CONFIG.defaultPackageId || packages[0]?.id;
+    return packages.find(pkg => pkg.id === selectedId) || packages[0];
+  },
+  getSelectedPackageOptions: () => {
+    const selected = Quote.getSelectedPackage();
+    if (!selected) return {};
+    return {
+      spacingMultiplier: selected.spacingMultiplier || 1.0,
+      altitudeMultiplier: selected.altitudeMultiplier || 1.0,
+      landPhotos: selected.landPhotos || 0,
+      topDownShots: selected.topDownShots || 0,
+      packageId: selected.id,
+      packageName: selected.name
+    };
+  },
+  getPhotoPlan: (plot) => {
+    const packageOptions = Quote.getSelectedPackageOptions();
+    const landPhotos = Math.max(0, Math.round(packageOptions.landPhotos || 0));
+    const topDownShots = Math.max(0, Math.round(packageOptions.topDownShots || 0));
+    const cappedTopDown = Math.min(topDownShots, landPhotos);
+    const angledShots = Math.max(landPhotos - cappedTopDown, 0);
+    let buildingPhotos = 0;
+    if (plot && typeof LandPlotting !== 'undefined' && LandPlotting.getBuildingPhotoCount) {
+      buildingPhotos = LandPlotting.getBuildingPhotoCount(plot);
+    }
+    return {
+      landPhotos,
+      topDownShots: cappedTopDown,
+      angledShots,
+      buildingPhotos,
+      totalPhotos: landPhotos + buildingPhotos,
+      packageId: packageOptions.packageId,
+      packageName: packageOptions.packageName
+    };
+  },
+  updatePackageSummary: (plan) => {
+    const summary = document.getElementById('quotePackageSummary');
+    if (!summary) return;
+    const totalEl = document.getElementById('quotePackagePhotoCount');
+    const landEl = document.getElementById('quotePackageLandCount');
+    const topDownEl = document.getElementById('quotePackageTopDownCount');
+    const angledEl = document.getElementById('quotePackageAngledCount');
+    const buildingEl = document.getElementById('quotePackageBuildingCount');
+    if (!plan) {
+      if (totalEl) totalEl.textContent = '-';
+      if (landEl) landEl.textContent = '-';
+      if (topDownEl) topDownEl.textContent = '-';
+      if (angledEl) angledEl.textContent = '-';
+      if (buildingEl) buildingEl.textContent = '-';
+      return;
+    }
+    if (totalEl) totalEl.textContent = plan.totalPhotos.toLocaleString();
+    if (landEl) landEl.textContent = plan.landPhotos.toLocaleString();
+    if (topDownEl) topDownEl.textContent = plan.topDownShots.toLocaleString();
+    if (angledEl) angledEl.textContent = plan.angledShots.toLocaleString();
+    if (buildingEl) buildingEl.textContent = plan.buildingPhotos.toLocaleString();
+  },
+  populatePackages: () => {
+    const select = document.getElementById('quotePackage');
+    if (!select) return;
+    const packages = Quote.getPhotoPackages();
+    select.innerHTML = packages.map(pkg => `<option value="${pkg.id}">${pkg.name}</option>`).join('');
+    const defaultId = CONFIG.defaultPackageId || packages[0]?.id;
+    if (defaultId) select.value = defaultId;
+    Quote.updatePackageHint();
+  },
+  updatePackageHint: () => {
+    const hint = document.getElementById('quotePackageHint');
+    if (!hint) return;
+    const selected = Quote.getSelectedPackage();
+    hint.textContent = selected?.description || '';
   },
   populateServiceTypes: () => {
     const select = document.getElementById('quoteServiceType');
@@ -69,7 +165,14 @@ const Quote = {
     if (unit === 'acres') {
       areaCost = area * basePrice;
     } else if (unit === 'sqft') {
-      areaCost = area * (basePrice || CONFIG.pricing.basePricePerSqFt);
+      const perSqFt = CONFIG.pricing.basePricePerSqFt || (basePrice / 43560);
+      areaCost = area * perSqFt;
+    } else if (unit === 'sqmeters') {
+      const acres = area * 0.000247105;
+      areaCost = acres * basePrice;
+    } else if (unit === 'hectares') {
+      const acres = area * 2.47105;
+      areaCost = acres * basePrice;
     }
     
     // Calculate photo processing cost
@@ -94,7 +197,7 @@ const Quote = {
   calculatePhotoCost: (photoCount, basePrice) => {
     return photoCount * (basePrice || CONFIG.pricing.photoProcessingCost) * CONFIG.pricing.photoMultiplier;
   },
-  createQuote: () => {
+  createQuote: async () => {
     // Get customer information from form
     const customerName = document.getElementById('quoteCustomerName')?.value.trim();
     const customerEmail = document.getElementById('quoteCustomerEmail')?.value.trim();
@@ -124,24 +227,28 @@ const Quote = {
     const basePrice = service?.basePrice || CONFIG.pricing.basePricePerAcre || 250;
     
     // Create or find customer
-    let customer = Storage.customers.getAll().find(c => 
-      c.email && c.email.toLowerCase() === customerEmail.toLowerCase()
-    );
-    
-    if (!customer) {
-      customer = Storage.customers.add({
-        name: customerName,
-        email: customerEmail,
-        phone: customerPhone || '',
-        address: '',
-        notes: 'Created from quote request'
-      });
-    } else {
-      // Update existing customer info
-      Storage.customers.update(customer.id, {
-        name: customerName,
-        phone: customerPhone || customer.phone || ''
-      });
+    let customer = null;
+    try {
+      const customers = await Storage.customers.getAll();
+      customer = customers.find(c => c.email && c.email.toLowerCase() === customerEmail.toLowerCase()) || null;
+      if (!customer) {
+        customer = await Storage.customers.add({
+          name: customerName,
+          email: customerEmail,
+          phone: customerPhone || '',
+          address: '',
+          notes: 'Created from quote request'
+        });
+      } else {
+        await Storage.customers.update(customer.id, {
+          name: customerName,
+          phone: customerPhone || customer.phone || ''
+        });
+      }
+    } catch (e) {
+      console.error('Error saving customer:', e);
+      alert('There was an error saving your information. Please try again.');
+      return;
     }
     
     // Create quote
@@ -163,13 +270,32 @@ const Quote = {
       requestedDate: new Date().toISOString()
     };
     
-    Storage.quotes.add(quote);
+    try {
+      await Storage.quotes.add(quote);
+    } catch (e) {
+      console.error('Error saving quote:', e);
+      alert('There was an error submitting your quote. Please try again.');
+      return;
+    }
     
     // Show success message
     alert(`Thank you, ${customerName}! Your quote request has been submitted. We'll send a detailed quote to ${customerEmail} within 24 hours.`);
     
     // Reset form (but keep the mapped area)
+    const areaValue = document.getElementById('quoteArea')?.value;
+    const areaUnitValue = document.getElementById('quoteAreaUnit')?.value;
+    const photoCountValue = document.getElementById('quotePhotoCount')?.value;
+    const packageValue = document.getElementById('quotePackage')?.value;
     document.getElementById('quoteForm').reset();
+    const areaEl = document.getElementById('quoteArea');
+    const areaUnitEl = document.getElementById('quoteAreaUnit');
+    const photoCountEl = document.getElementById('quotePhotoCount');
+    const packageEl = document.getElementById('quotePackage');
+    if (areaEl && areaValue) areaEl.value = areaValue;
+    if (areaUnitEl && areaUnitValue) areaUnitEl.value = areaUnitValue;
+    if (photoCountEl && photoCountValue) photoCountEl.value = photoCountValue;
+    if (packageEl && packageValue) packageEl.value = packageValue;
+    Quote.updatePackageHint();
     document.getElementById('quotePriceBreakdown')?.classList.add('is-hidden');
     
     // Optionally scroll to top or show confirmation
@@ -182,19 +308,22 @@ const Quote = {
       return;
     }
     
-    const plots = LandPlotting.getAllPlots();
-    if (plots.length === 0) {
+    const activePlot = LandPlotting.getActivePlot?.();
+    if (!activePlot) {
       alert('Please plot your land first.');
+      return;
+    }
+    const areaCoordinates = LandPlotting.getActivePlotCoordinates?.();
+    if (!areaCoordinates) {
+      alert('No area calculated. Please finish plotting your land.');
       return;
     }
     
     // Get total area from plots
     let totalAreaSqMeters = 0;
-    plots.forEach(plot => {
-      if (plot.area) {
-        totalAreaSqMeters += plot.area.sqmeters || 0;
-      }
-    });
+    if (activePlot.area) {
+      totalAreaSqMeters = activePlot.area.sqmeters || 0;
+    }
     
     if (totalAreaSqMeters <= 0) {
       alert('No area calculated. Please finish plotting your land.');
@@ -205,19 +334,10 @@ const Quote = {
     const altitude = parseFloat(document.getElementById('coverageAltitude')?.value) || CONFIG.droneSpecs.defaultAltitude;
     const frontOverlap = parseFloat(document.getElementById('coverageFrontOverlap')?.value) || CONFIG.coverageDefaults.frontOverlap;
     const sideOverlap = parseFloat(document.getElementById('coverageSideOverlap')?.value) || CONFIG.coverageDefaults.sideOverlap;
-    
-    // Get combined coordinates from all plots
-    const allBounds = MapManager.getAllPlotsBounds();
-    let areaCoordinates = null;
-    if (allBounds && allBounds.isValid()) {
-      areaCoordinates = [
-        [allBounds.getSouthWest().lat, allBounds.getSouthWest().lng],
-        [allBounds.getNorthWest().lat, allBounds.getNorthWest().lng],
-        [allBounds.getNorthEast().lat, allBounds.getNorthEast().lng],
-        [allBounds.getSouthEast().lat, allBounds.getSouthEast().lng],
-        [allBounds.getSouthWest().lat, allBounds.getSouthWest().lng]
-      ];
-    }
+    const packageOptions = Quote.getSelectedPackageOptions();
+    const photoPlan = Quote.getPhotoPlan(activePlot);
+    Quote.lastPhotoPlan = photoPlan;
+    Quote.updatePackageHint();
     
     // Calculate coverage
     const result = CoverageCalculator.calculate(
@@ -226,12 +346,35 @@ const Quote = {
       altitude,
       frontOverlap,
       sideOverlap,
-      CONFIG.droneSpecs
+      CONFIG.droneSpecs,
+      {
+        ...packageOptions,
+        landPhotos: photoPlan.landPhotos,
+        topDownShots: photoPlan.topDownShots
+      }
     );
     
     if (!result) {
       alert('Error calculating coverage. Please check your inputs.');
       return;
+    }
+
+    const totalPhotos = photoPlan.totalPhotos || result.photos.recommended;
+    result.photos.total = totalPhotos;
+    result.photos.land = photoPlan.landPhotos || result.photos.recommended;
+    result.photos.building = photoPlan.buildingPhotos;
+    result.photos.topDown = photoPlan.topDownShots;
+    result.photos.angled = photoPlan.angledShots;
+    result.flightTime = CoverageCalculator.calculateFlightTime(totalPhotos, 2);
+    if (result.flightPath) {
+      result.flightPath.landPhotos = result.photos.land;
+      result.flightPath.topDownShots = result.photos.topDown;
+      result.flightPath.angledShots = result.photos.angled;
+      result.flightPath.buildingPhotos = result.photos.building;
+      result.flightPath.totalPhotos = totalPhotos;
+      if (typeof LandPlotting !== 'undefined' && LandPlotting.getBuildingOrbits) {
+        result.flightPath.orbits = LandPlotting.getBuildingOrbits(activePlot);
+      }
     }
     
     // Update UI with results
@@ -240,7 +383,7 @@ const Quote = {
       resultsEl.innerHTML = `
         <div class="coverage-results-item">
           <span>Photos Needed:</span>
-          <strong>${result.photos.recommended}</strong>
+          <strong>${totalPhotos}</strong>
         </div>
         <div class="coverage-results-item">
           <span>Coverage per Photo:</span>
@@ -261,11 +404,17 @@ const Quote = {
       `;
       resultsEl.classList.remove('is-hidden');
     }
+
+    const packageSummary = document.getElementById('quotePackageSummary');
+    Quote.updatePackageSummary(photoPlan);
+    if (packageSummary) {
+      packageSummary.classList.remove('is-hidden');
+    }
     
     // Update quote form with photo count
     const photoCountEl = document.getElementById('quotePhotoCount');
     if (photoCountEl) {
-      photoCountEl.value = result.photos.recommended;
+      photoCountEl.value = totalPhotos;
     }
     
     // Update flight path visualization if available
@@ -283,6 +432,7 @@ const Quote = {
     const areaUnit = document.getElementById('quoteAreaUnit')?.value || 'acres';
     const photoCount = parseInt(document.getElementById('quotePhotoCount')?.value) || 0;
     const breakdown = document.getElementById('quotePriceBreakdown');
+    const packageSummary = document.getElementById('quotePackageSummary');
     
     if (area > 0 && breakdown) {
       // Format area display
@@ -299,21 +449,50 @@ const Quote = {
       document.getElementById('quotePhotoCountDisplay').textContent = photoCount.toLocaleString();
       breakdown.classList.remove('is-hidden');
     }
+    if (packageSummary) {
+      if (area > 0) {
+        packageSummary.classList.remove('is-hidden');
+      } else {
+        packageSummary.classList.add('is-hidden');
+      }
+    }
+    if (area > 0) {
+      let plan = Quote.lastPhotoPlan;
+      if (!plan && typeof LandPlotting !== 'undefined') {
+        const activePlot = LandPlotting.getActivePlot?.();
+        if (activePlot) {
+          plan = Quote.getPhotoPlan(activePlot);
+          Quote.lastPhotoPlan = plan;
+        }
+      }
+      Quote.updatePackageSummary(plan);
+    } else {
+      Quote.updatePackageSummary(null);
+    }
   },
-  renderList: () => {
+  renderList: async () => {
     const list = document.getElementById('quoteList');
-    const quotes = Storage.quotes.getAll();
+    if (!list) return;
+    let quotes = [];
+    let customers = [];
+    try {
+      quotes = await Storage.quotes.getAll();
+      customers = await Storage.customers.getAll();
+    } catch (e) {
+      console.error('Error loading quotes:', e);
+    }
     if (quotes.length === 0) {
       list.innerHTML = '<p class="empty-state">No quotes found. Create one above.</p>';
       return;
     }
+    const customerById = new Map(customers.map(c => [c.id, c]));
     list.innerHTML = quotes.map(quote => {
-      const customer = Storage.customers.find(quote.customerId);
-      const date = new Date(quote.date).toLocaleDateString();
+      const customer = customerById.get(quote.customerId);
+      const date = new Date(quote.date || quote.requestedDate || Date.now()).toLocaleDateString();
       return `
         <div class="quote-item">
           <div class="quote-item-header">
-            <h4>${quote.quoteNumber} - ${Utils.escapeHtml(quote.serviceName)}</h4>
+            <h4>${Utils.escapeHtml(quote.quoteNumber || 'Quote')} - ${Utils.escapeHtml(quote.serviceName)}</h4>
             <div class="quote-actions">
               <button class="btn-icon" data-action="view" data-id="${quote.id}" title="View">View</button>
               <button class="btn-icon" data-action="delete" data-id="${quote.id}" title="Delete">Delete</button>
@@ -337,18 +516,29 @@ const Quote = {
     if (action === 'view') Quote.viewQuote(id);
     if (action === 'delete') Quote.deleteQuote(id);
   },
-  viewQuote: (id) => {
-    const quote = Storage.quotes.find(id);
-    if (!quote) return;
-    const customer = Storage.customers.find(quote.customerId);
-    const date = new Date(quote.date).toLocaleDateString();
-    document.getElementById('quotePreview').innerHTML = `<div class="quote-preview"><h2>Quote ${quote.quoteNumber}</h2><div class="quote-preview-section"><h3>Customer Information</h3><p><strong>Name:</strong> ${customer ? Utils.escapeHtml(customer.name) : 'N/A'}</p><p><strong>Email:</strong> ${customer ? Utils.escapeHtml(customer.email || 'N/A') : 'N/A'}</p><p><strong>Phone:</strong> ${customer ? Utils.escapeHtml(customer.phone || 'N/A') : 'N/A'}</p></div><div class="quote-preview-section"><h3>Service Details</h3><p><strong>Service:</strong> ${Utils.escapeHtml(quote.serviceName)}</p><p><strong>Area:</strong> ${quote.area} ${Utils.escapeHtml(quote.areaUnit)}</p><p><strong>Base Price:</strong> $${quote.basePrice.toFixed(2)}</p><p><strong>Total:</strong> $${quote.total.toFixed(2)}</p></div>${quote.notes ? `<div class="quote-preview-section"><h3>Notes</h3><p>${Utils.escapeHtml(quote.notes)}</p></div>` : ''}<div class="quote-preview-section"><p><strong>Date:</strong> ${date}</p><p><strong>Status:</strong> ${Utils.escapeHtml(quote.status)}</p></div></div>`;
-    document.getElementById('quotePreviewModal').style.display = 'block';
+  viewQuote: async (id) => {
+    try {
+      const quote = await Storage.quotes.find(id);
+      if (!quote) return;
+      const customer = await Storage.customers.find(quote.customerId);
+      const date = new Date(quote.date || quote.requestedDate || Date.now()).toLocaleDateString();
+      const label = quote.quoteNumber || quote.id || 'Quote';
+      document.getElementById('quotePreview').innerHTML = `<div class="quote-preview"><h2>Quote ${Utils.escapeHtml(label)}</h2><div class="quote-preview-section"><h3>Customer Information</h3><p><strong>Name:</strong> ${customer ? Utils.escapeHtml(customer.name) : 'N/A'}</p><p><strong>Email:</strong> ${customer ? Utils.escapeHtml(customer.email || 'N/A') : 'N/A'}</p><p><strong>Phone:</strong> ${customer ? Utils.escapeHtml(customer.phone || 'N/A') : 'N/A'}</p></div><div class="quote-preview-section"><h3>Service Details</h3><p><strong>Service:</strong> ${Utils.escapeHtml(quote.serviceName)}</p><p><strong>Area:</strong> ${quote.area} ${Utils.escapeHtml(quote.areaUnit)}</p><p><strong>Base Price:</strong> $${quote.basePrice.toFixed(2)}</p><p><strong>Total:</strong> $${quote.total.toFixed(2)}</p></div>${quote.notes ? `<div class="quote-preview-section"><h3>Notes</h3><p>${Utils.escapeHtml(quote.notes)}</p></div>` : ''}<div class="quote-preview-section"><p><strong>Date:</strong> ${date}</p><p><strong>Status:</strong> ${Utils.escapeHtml(quote.status)}</p></div></div>`;
+      document.getElementById('quotePreviewModal').style.display = 'block';
+    } catch (e) {
+      console.error('Error loading quote:', e);
+      alert('Unable to load quote. Please try again.');
+    }
   },
-  deleteQuote: (id) => {
+  deleteQuote: async (id) => {
     if (confirm('Are you sure you want to delete this quote?')) {
-      Storage.quotes.delete(id);
-      Quote.renderList();
+      try {
+        await Storage.quotes.delete(id);
+        await Quote.renderList();
+      } catch (e) {
+        console.error('Error deleting quote:', e);
+        alert('Error deleting quote. Please try again.');
+      }
     }
   },
   exportQuote: () => {

@@ -43,21 +43,31 @@ const App = {
   },
   
   setupExportImport: () => {
-    document.getElementById('exportData').addEventListener('click', () => {
-      const data = Storage.exportAll();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'drone-quote-mapper-backup-' + new Date().toISOString().split('T')[0] + '.json';
-      a.click();
+    const exportBtn = document.getElementById('exportData');
+    const importBtn = document.getElementById('importData');
+    const importFile = document.getElementById('importFile');
+    if (!exportBtn || !importBtn || !importFile) return;
+
+    exportBtn.addEventListener('click', async () => {
+      try {
+        const data = await Storage.exportAll();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'drone-quote-mapper-backup-' + new Date().toISOString().split('T')[0] + '.json';
+        a.click();
+      } catch (e) {
+        console.error('Export failed:', e);
+        alert('Export failed. Please try again.');
+      }
     });
     
-    document.getElementById('importData').addEventListener('click', () => {
-      document.getElementById('importFile').click();
+    importBtn.addEventListener('click', () => {
+      importFile.click();
     });
     
-    document.getElementById('importFile').addEventListener('change', (e) => {
+    importFile.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();

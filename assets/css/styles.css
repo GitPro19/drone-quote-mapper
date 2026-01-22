@@ -185,6 +185,12 @@ html, body {
   align-items: center;
 }
 
+.start-mapping-btn {
+  width: 100%;
+  justify-content: center;
+  font-weight: 600;
+}
+
 .search-input {
   min-width: 200px;
   padding: 0.5rem;
@@ -254,6 +260,14 @@ html, body {
   padding: 1.5rem;
   border-bottom: 1px solid var(--border);
   transition: all 0.3s;
+}
+
+.workflow-step .step-content {
+  display: none;
+}
+
+.workflow-step.active .step-content {
+  display: block;
 }
 
 .workflow-step.active {
@@ -334,6 +348,18 @@ html, body {
   font-style: normal;
 }
 
+.step-tips {
+  margin: 0.5rem 0 1rem;
+  padding-left: 1rem;
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.step-tips li {
+  margin-bottom: 0.35rem;
+}
+
 /* Plotting Panel */
 .plotting-panel {
   background: var(--bg-card);
@@ -373,10 +399,16 @@ html, body {
   border-radius: var(--radius-sm);
 }
 
+.obstacle-item .form-input {
+  flex: 1;
+  margin-right: 0.5rem;
+}
+
 .obstacle-actions {
   display: flex;
   gap: 0.5rem;
   margin-top: 1rem;
+  flex-wrap: wrap;
 }
 
 /* Buttons */
@@ -402,6 +434,11 @@ html, body {
   background: var(--primary-hover);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+}
+
+#markHouse[data-active="true"] {
+  background: var(--info);
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.35);
 }
 
 .btn-success {
@@ -570,6 +607,36 @@ html, body {
   padding-top: 0.75rem;
 }
 
+.package-summary {
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.package-summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.package-summary-item strong {
+  color: var(--text-primary);
+}
+
+.package-summary-item.total {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--border);
+}
+
+.package-summary-item.total strong {
+  color: var(--primary);
+}
+
 /* Plotting Markers */
 .plotting-marker {
   cursor: move;
@@ -632,8 +699,20 @@ html, body {
   justify-content: center;
   border: 2px solid white;
   box-shadow: var(--shadow-md);
-  font-size: 14px;
 }
+
+.obstacle-marker-label {
+  color: white;
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+}
+
+.obstacle-marker-inner.obstacle-marker-house { background: #ef4444; }
+.obstacle-marker-inner.obstacle-marker-garage { background: #f59e0b; }
+.obstacle-marker-inner.obstacle-marker-shed { background: #3b82f6; }
+.obstacle-marker-inner.obstacle-marker-barn { background: #8b5cf6; }
+.obstacle-marker-inner.obstacle-marker-dock { background: #14b8a6; }
 
 /* Additional Tabs */
 .additional-tabs {
@@ -822,10 +901,26 @@ html, body {
 
 /* Step Status */
 .step-status {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.5rem;
+}
+
+.workflow-step.active .step-status {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.workflow-step.complete .step-status {
+  background: var(--success);
+  border-color: var(--success);
+  color: white;
 }
 
 /* Plotting Status */

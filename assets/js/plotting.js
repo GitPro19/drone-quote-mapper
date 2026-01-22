@@ -146,7 +146,7 @@ const LandPlotting = {
       alert('Please add at least 3 points to create a plot');
       return;
     }
-    
+    LandPlotting.updatePlotMeasurements();
     LandPlotting.currentPlot.isComplete = true;
     LandPlotting.allPlots.push(LandPlotting.currentPlot);
     LandPlotting.savePlots();
@@ -196,6 +196,9 @@ const LandPlotting = {
     if (!LandPlotting.currentPlot || LandPlotting.currentPlot.points.length < 3) {
       LandPlotting.currentPlot.area = null;
       LandPlotting.currentPlot.perimeter = null;
+      if (typeof MapManager !== 'undefined' && MapManager.updateAllMeasurements) {
+        MapManager.updateAllMeasurements();
+      }
       return;
     }
     
@@ -205,6 +208,72 @@ const LandPlotting = {
     
     LandPlotting.currentPlot.area = area;
     LandPlotting.currentPlot.perimeter = perimeter;
+    if (typeof MapManager !== 'undefined' && MapManager.updateAllMeasurements) {
+      MapManager.updateAllMeasurements();
+    }
+  },
+
+  getObstacleLabelForType: (type) => {
+    if (!type) return 'Building';
+    const normalized = String(type).toLowerCase();
+    if (normalized === 'house') return 'House';
+    if (normalized === 'garage') return 'Garage';
+    if (normalized === 'shed') return 'Shed';
+    if (normalized === 'barn') return 'Barn';
+    if (normalized === 'dock') return 'Dock';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  },
+
+  getBuildingShotCountForType: (type) => {
+    const normalized = String(type || 'default').toLowerCase();
+    const counts = (typeof CONFIG !== 'undefined' && CONFIG.buildingShotCounts) ? CONFIG.buildingShotCounts : {};
+    const fallback = counts.default || 4;
+    return counts[normalized] || fallback;
+  },
+
+  getBuildingShotRadiusForType: (type) => {
+    const normalized = String(type || 'default').toLowerCase();
+    const radii = (typeof CONFIG !== 'undefined' && CONFIG.buildingShotRadii) ? CONFIG.buildingShotRadii : {};
+    const fallback = radii.default || 12;
+    return radii[normalized] || fallback;
+  },
+
+  getBuildingPhotoCount: (plot) => {
+    if (!plot || !plot.obstacles) return 0;
+    return plot.obstacles.reduce((total, obs) => total + LandPlotting.getBuildingShotCountForType(obs.type), 0);
+  },
+
+  getBuildingOrbits: (plot) => {
+    if (!plot || !plot.obstacles) return [];
+    return plot.obstacles.map(obs => {
+      const shots = LandPlotting.getBuildingShotCountForType(obs.type);
+      const radius = LandPlotting.getBuildingShotRadiusForType(obs.type);
+      const points = [];
+      const latRad = (obs.position.lat * Math.PI) / 180;
+      const latOffset = radius / 111320;
+      const lngOffset = radius / (111320 * Math.cos(latRad));
+      for (let i = 0; i < shots; i++) {
+        const angle = (i / shots) * Math.PI * 2;
+        const lat = obs.position.lat + (latOffset * Math.cos(angle));
+        const lng = obs.position.lng + (lngOffset * Math.sin(angle));
+        points.push([lat, lng]);
+      }
+      return {
+        id: obs.id,
+        type: obs.type,
+        name: obs.name,
+        shots,
+        radius,
+        center: { ...obs.position },
+        points
+      };
+    });
+  },
+
+  getNextObstacleName: (plot, type) => {
+    const label = LandPlotting.getObstacleLabelForType(type);
+    const existing = (plot?.obstacles || []).filter(o => LandPlotting.getObstacleLabelForType(o.type) === label).length;
+    return `${label} ${existing + 1}`;
   },
 
   addObstacle: (plotId, lat, lng, type = 'house') => {
@@ -215,6 +284,7 @@ const LandPlotting = {
       id: 'obstacle_' + Date.now(),
       plotId: plotId,
       type: type,
+      name: LandPlotting.getNextObstacleName(plot, type),
       position: { lat: lat, lng: lng },
       createdAt: new Date().toISOString()
     };
@@ -227,6 +297,18 @@ const LandPlotting = {
       MapManager.addObstacleMarker(obstacle);
     }
     
+    return obstacle;
+  },
+
+  renameObstacle: (plotId, obstacleId, name) => {
+    const plot = LandPlotting.allPlots.find(p => p.id === plotId);
+    if (!plot || !plot.obstacles) return null;
+    const obstacle = plot.obstacles.find(o => o.id === obstacleId);
+    if (!obstacle) return null;
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return null;
+    obstacle.name = trimmed;
+    LandPlotting.savePlots();
     return obstacle;
   },
 
@@ -244,6 +326,23 @@ const LandPlotting = {
 
   getAllPlots: () => {
     return LandPlotting.allPlots.filter(p => p.isComplete);
+  },
+
+  getLatestPlot: () => {
+    const plots = LandPlotting.getAllPlots();
+    return plots.length > 0 ? plots[plots.length - 1] : null;
+  },
+
+  getActivePlot: () => {
+    return LandPlotting.isPlotting ? LandPlotting.currentPlot : LandPlotting.getLatestPlot();
+  },
+
+  getActivePlotCoordinates: () => {
+    const plot = LandPlotting.getActivePlot();
+    if (!plot || !plot.points || plot.points.length < 3) return null;
+    const coords = plot.points.map(p => [p.lat, p.lng]);
+    coords.push([plot.points[0].lat, plot.points[0].lng]);
+    return coords;
   },
 
   getCurrentPlot: () => {
@@ -338,7 +437,15 @@ const LandPlotting = {
     const step1 = document.getElementById('workflowStep1');
     const step2 = document.getElementById('workflowStep2');
     const step3 = document.getElementById('workflowStep3');
+    const step1Status = document.getElementById('step1Status');
+    const step2Status = document.getElementById('step2Status');
+    const step3Status = document.getElementById('step3Status');
     const plots = LandPlotting.getAllPlots();
+    const obstaclePanel = document.getElementById('obstaclePanel');
+    const obstacleVisible = obstaclePanel && !obstaclePanel.classList.contains('is-hidden');
+    const latestPlot = LandPlotting.getLatestPlot?.();
+    const obstacleComplete = latestPlot ? latestPlot.obstacleReviewComplete === true : false;
+    const hasPlot = plots.length > 0;
     
     // Reset all steps
     [step1, step2, step3].forEach(step => {
@@ -350,25 +457,68 @@ const LandPlotting = {
     if (step1) {
       if (LandPlotting.isPlotting) {
         step1.classList.add('active');
-      } else if (plots.length > 0) {
+      } else if (hasPlot) {
         step1.classList.add('complete');
+      }
+    }
+    if (step1Status) {
+      if (LandPlotting.isPlotting || !hasPlot) {
+        step1Status.textContent = 'Active';
+      } else {
+        step1Status.textContent = 'Complete';
       }
     }
     
     if (step2) {
-      if (plots.length > 0 && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles) {
+      if ((LandPlotting.isMarkingObstacles || obstacleVisible) || (hasPlot && !obstacleComplete && !LandPlotting.isPlotting)) {
         step2.classList.add('active');
-      } else if (LandPlotting.isMarkingObstacles) {
-        step2.classList.add('active');
-      } else if (plots.length > 0 && plots[plots.length - 1].obstacles && plots[plots.length - 1].obstacles.length > 0) {
+      } else if (hasPlot && obstacleComplete) {
         step2.classList.add('complete');
+      }
+    }
+    if (step2Status) {
+      if (LandPlotting.isPlotting) {
+        step2Status.textContent = 'Locked';
+      } else if (LandPlotting.isMarkingObstacles || obstacleVisible || (hasPlot && !obstacleComplete)) {
+        step2Status.textContent = 'Active';
+      } else if (hasPlot && obstacleComplete) {
+        step2Status.textContent = 'Complete';
+      } else if (hasPlot) {
+        step2Status.textContent = 'Optional';
+      } else {
+        step2Status.textContent = 'Locked';
       }
     }
     
     if (step3) {
-      if (plots.length > 0 && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles) {
+      if (hasPlot && obstacleComplete && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles && !obstacleVisible) {
         step3.classList.add('active');
       }
+    }
+    if (step3Status) {
+      if (hasPlot && obstacleComplete && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles && !obstacleVisible) {
+        step3Status.textContent = 'Active';
+      } else if (hasPlot) {
+        step3Status.textContent = 'Locked';
+      } else {
+        step3Status.textContent = 'Locked';
+      }
+    }
+
+    if (obstaclePanel) {
+      if (hasPlot && !obstacleComplete && !LandPlotting.isPlotting) {
+        obstaclePanel.classList.remove('is-hidden');
+      } else if (!LandPlotting.isMarkingObstacles) {
+        obstaclePanel.classList.add('is-hidden');
+      }
+    }
+    if (hasPlot && !obstacleComplete && !LandPlotting.isPlotting) {
+      if (typeof MapManager !== 'undefined' && MapManager.map && !LandPlotting.isMarkingObstacles) {
+        MapManager.enterObstacleMarkingMode();
+      }
+    }
+    if (typeof MapManager !== 'undefined' && MapManager.refreshFlightPath) {
+      MapManager.refreshFlightPath();
     }
   },
 
@@ -376,6 +526,11 @@ const LandPlotting = {
     const obstaclePanel = document.getElementById('obstaclePanel');
     if (obstaclePanel) {
       obstaclePanel.classList.remove('is-hidden');
+    }
+    const latest = LandPlotting.getLatestPlot?.();
+    if (latest) {
+      latest.obstacleReviewComplete = false;
+      LandPlotting.savePlots();
     }
     LandPlotting.updateWorkflowSteps();
   },
@@ -385,6 +540,14 @@ const LandPlotting = {
     const obstaclePanel = document.getElementById('obstaclePanel');
     if (obstaclePanel) {
       obstaclePanel.classList.add('is-hidden');
+    }
+    if (typeof MapManager !== 'undefined' && MapManager.setObstacleMarkingUI) {
+      MapManager.setObstacleMarkingUI(false);
+    }
+    const latest = LandPlotting.getLatestPlot?.();
+    if (latest) {
+      latest.obstacleReviewComplete = true;
+      LandPlotting.savePlots();
     }
     
     // Remove obstacle marking click handler
@@ -409,6 +572,36 @@ const LandPlotting = {
 
   skipObstacles: () => {
     LandPlotting.finishObstacleMarking();
+  },
+
+  readjustLastPlot: () => {
+    if (LandPlotting.isPlotting) return;
+    const plots = LandPlotting.getAllPlots();
+    if (plots.length === 0) return;
+    const lastPlot = plots[plots.length - 1];
+    LandPlotting.allPlots = LandPlotting.allPlots.filter(p => p.id !== lastPlot.id);
+    lastPlot.isComplete = false;
+    lastPlot.obstacleReviewComplete = false;
+    LandPlotting.currentPlot = lastPlot;
+    LandPlotting.isPlotting = true;
+    LandPlotting.isMarkingObstacles = false;
+    const obstaclePanel = document.getElementById('obstaclePanel');
+    if (obstaclePanel) {
+      obstaclePanel.classList.add('is-hidden');
+    }
+    if (typeof MapManager !== 'undefined' && MapManager.setObstacleMarkingUI) {
+      MapManager.setObstacleMarkingUI(false);
+    }
+
+    if (typeof MapManager !== 'undefined') {
+      MapManager.map?.off('click');
+      MapManager.map?.getContainer()?.style && (MapManager.map.getContainer().style.cursor = '');
+      MapManager.clearAllPlots();
+      LandPlotting.getAllPlots().forEach(plot => MapManager.displayPlot(plot));
+      MapManager.updatePlotVisualization(LandPlotting.currentPlot);
+      MapManager.enterPlottingMode();
+    }
+    LandPlotting.updateUI();
   },
 
   savePlots: () => {
