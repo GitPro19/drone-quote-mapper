@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drone Quote Mapper</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <link rel="stylesheet" href="assets/css/styles.css">
 </head>
 <body>
@@ -13,59 +12,166 @@
     <header class="app-header">
       <h1>Drone Quote Mapper</h1>
       <div class="header-actions">
-        <button id="exportData" class="btn btn-secondary">Export Data</button>
-        <button id="importData" class="btn btn-secondary">Import Data</button>
+        <button id="exportData" class="btn btn-secondary">Export</button>
+        <button id="importData" class="btn btn-secondary">Import</button>
         <input type="file" id="importFile" accept=".json" class="is-hidden" aria-label="Import data file">
       </div>
     </header>
     <div class="main-content">
-      <div class="map-panel">
-        <div class="map-toolbar">
-          <div class="toolbar-group">
-            <button id="drawPolygon" class="btn btn-primary">Polygon</button>
-            <button id="drawRectangle" class="btn btn-primary">Rectangle</button>
-            <button id="drawCircle" class="btn btn-primary">Circle</button>
-            <button id="drawDistance" class="btn btn-primary">Distance</button>
-            <button id="clearDrawings" class="btn btn-warning">Clear</button>
+      <div class="map-area">
+        <!-- Floating Action Button -->
+        <div class="floating-controls">
+          <button id="startPlotting" class="fab btn-primary">Start Plotting</button>
+          <button id="finishPlotting" class="fab btn-success is-hidden">Finish Plot</button>
+          <button id="cancelPlotting" class="fab btn-warning is-hidden">Cancel</button>
+        </div>
+        
+        <!-- Map Controls (minimal, top-right) -->
+        <div class="map-controls">
+          <div class="map-controls-group">
+            <input type="text" id="addressSearch" class="form-input search-input" placeholder="Search address...">
+            <button id="searchAddress" class="btn btn-sm btn-primary">Search</button>
           </div>
-          <div class="toolbar-group">
-            <label for="measurementUnit" class="is-hidden">Measurement Unit</label>
+          <div class="map-controls-group">
             <select id="measurementUnit" class="form-select" aria-label="Measurement Unit">
               <option value="acres">Acres</option>
               <option value="sqft">Square Feet</option>
               <option value="sqmeters">Square Meters</option>
               <option value="hectares">Hectares</option>
             </select>
-            <button id="toggleGrid" class="btn btn-info">Grid</button>
-            <button id="toggleFlightPath" class="btn btn-info">Flight Path</button>
-            <button id="toggleSatellite" class="btn btn-info">Satellite</button>
+            <button id="toggleSatellite" class="btn btn-sm btn-info">Satellite</button>
+            <button id="clearAllPlots" class="btn btn-sm btn-warning">Clear All</button>
           </div>
         </div>
-        <div class="coordinate-input-panel" style="background: #2d2d2d; padding: 0.5rem 1rem; border-bottom: 1px solid #444; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-          <div style="display: flex; gap: 0.5rem; align-items: center; flex: 1; min-width: 200px;">
-            <input type="text" id="addressSearch" class="form-input" placeholder="Search address or place..." style="flex: 1; padding: 0.5rem; font-size: 0.9rem;">
-            <button id="searchAddress" class="btn btn-sm btn-primary">Search</button>
-          </div>
-          <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <label for="coordinateLat" style="color: #ccc; font-size: 0.85rem;">Lat:</label>
-            <input type="number" id="coordinateLat" class="form-input" step="0.000001" placeholder="Latitude" style="width: 120px; padding: 0.25rem 0.5rem; font-size: 0.85rem;">
-            <label for="coordinateLng" style="color: #ccc; font-size: 0.85rem;">Lng:</label>
-            <input type="number" id="coordinateLng" class="form-input" step="0.000001" placeholder="Longitude" style="width: 120px; padding: 0.25rem 0.5rem; font-size: 0.85rem;">
-            <button id="goToCoordinate" class="btn btn-sm btn-primary">Go To</button>
-          </div>
-        </div>
+        
         <div id="map" class="map-container"></div>
-        <div class="map-info">
-          <div id="currentMeasurement" class="measurement-display"></div>
+        
+        <!-- Measurement Card (bottom-left) -->
+        <div class="measurement-card">
+          <div class="measurement-value" id="measurementValue">0</div>
+          <div class="measurement-unit-label" id="measurementUnitLabel">acres</div>
+          <div class="measurement-label">Total Area</div>
         </div>
       </div>
-      <div class="control-panel">
-        <div class="tabs">
-          <button class="tab-btn active" data-tab="customers">Customers & Lots</button>
-          <button class="tab-btn" data-tab="quotes">Quotes</button>
+      <div class="workflow-panel">
+        <!-- Step 1: Plot Your Land -->
+        <div class="workflow-step active" id="workflowStep1">
+          <div class="step-header">
+            <span class="step-number">1</span>
+            <h2>Plot Your Land</h2>
+            <span class="step-status" id="step1Status"></span>
+          </div>
+          <div class="step-content">
+            <p class="step-instruction">Click points on the map to outline your property boundary</p>
+            <div class="plotting-panel is-hidden" id="plottingPanel">
+              <div class="plotting-status">
+                <span>Points placed: <strong id="pointCount">0</strong></span>
+              </div>
+              <button id="undoLastPoint" class="btn btn-sm btn-secondary" disabled>Undo Last Point</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Mark Houses (Optional) -->
+        <div class="workflow-step" id="workflowStep2">
+          <div class="step-header">
+            <span class="step-number">2</span>
+            <h2>Mark Houses <span class="optional-badge">Optional</span></h2>
+          </div>
+          <div class="step-content">
+            <div class="obstacle-panel is-hidden" id="obstaclePanel">
+              <p class="step-instruction">Click on the map where houses or large structures are located</p>
+              <p class="help-text">This helps us plan the best flight path</p>
+              <button id="markHouse" class="btn btn-primary">Mark House</button>
+              <div id="obstaclesList" class="obstacles-list"></div>
+              <div class="obstacle-actions">
+                <button id="finishObstacleMarking" class="btn btn-success">Done</button>
+                <button id="skipObstacles" class="btn btn-secondary">Skip This Step</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Get Your Quote -->
+        <div class="workflow-step" id="workflowStep3">
+          <div class="step-header">
+            <span class="step-number">3</span>
+            <h2>Get Your Quote</h2>
+          </div>
+          <div class="step-content">
+            <div class="coverage-section">
+              <h3>Coverage Calculator</h3>
+              <div class="coverage-calculator">
+                <div class="form-group">
+                  <label for="coverageAltitude">Flight Altitude (meters)</label>
+                  <input type="number" id="coverageAltitude" class="form-input" step="1" min="10" max="120" value="60">
+                </div>
+                <div class="form-group">
+                  <label for="coverageFrontOverlap">Front Overlap (%)</label>
+                  <input type="number" id="coverageFrontOverlap" class="form-input" step="1" min="0" max="100" value="70">
+                </div>
+                <div class="form-group">
+                  <label for="coverageSideOverlap">Side Overlap (%)</label>
+                  <input type="number" id="coverageSideOverlap" class="form-input" step="1" min="0" max="100" value="60">
+                </div>
+                <button type="button" id="calculateCoverage" class="btn btn-primary">Calculate Coverage</button>
+                <div id="coverageResults" class="coverage-results is-hidden"></div>
+              </div>
+            </div>
+            
+            <div class="quote-section">
+              <h3>Create Quote</h3>
+              <form id="quoteForm" class="quote-form">
+                <div class="form-group">
+                  <label for="quoteCustomer">Customer</label>
+                  <select id="quoteCustomer" class="form-select" required>
+                    <option value="">Select customer...</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="quoteServiceType">Service Type</label>
+                  <select id="quoteServiceType" class="form-select" required>
+                    <option value="">Select service...</option>
+                  </select>
+                </div>
+                <input type="hidden" id="quoteArea" value="0">
+                <input type="hidden" id="quoteAreaUnit" value="acres">
+                <input type="hidden" id="quotePhotoCount" value="0">
+                <input type="hidden" id="quoteArea" value="0">
+                <input type="hidden" id="quoteAreaUnit" value="acres">
+                <input type="hidden" id="quotePhotoCount" value="0">
+                <div class="form-group">
+                  <label for="quoteBasePrice">Base Price per Unit</label>
+                  <input type="number" id="quoteBasePrice" class="form-input" step="0.01" required>
+                </div>
+                <div id="quotePriceBreakdown" class="quote-price-breakdown is-hidden">
+                  <h4>Price Breakdown</h4>
+                  <div class="quote-price-item">
+                    <span>Area Cost:</span>
+                    <span id="quoteAreaCost">$0.00</span>
+                  </div>
+                  <div class="quote-price-item">
+                    <span>Photo Processing:</span>
+                    <span id="quotePhotoCost">$0.00</span>
+                  </div>
+                  <div class="quote-price-item">
+                    <span>Total:</span>
+                    <span id="quoteTotalCost">$0.00</span>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Quote</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Additional Tabs (Customers, Settings) -->
+        <div class="additional-tabs">
+          <button class="tab-btn" data-tab="customers">Customers</button>
           <button class="tab-btn" data-tab="settings">Settings</button>
         </div>
-        <div id="customersTab" class="tab-content active">
+        
+        <div id="customersTab" class="tab-content">
           <div class="section">
             <h3>Customer Management</h3>
             <div class="search-box">
@@ -89,118 +195,6 @@
               <h4>Change Comparison</h4>
               <div id="comparisonMetrics"></div>
             </div>
-          </div>
-        </div>
-        <div id="quotesTab" class="tab-content">
-          <div class="section">
-            <h3>Coverage Calculator</h3>
-            <div class="coverage-calculator">
-              <div class="form-group">
-                <label for="coverageAltitude">Flight Altitude (meters)</label>
-                <input type="number" id="coverageAltitude" class="form-input" step="1" min="10" max="120" value="60" aria-label="Flight Altitude">
-              </div>
-              <div class="form-group">
-                <label for="coverageFrontOverlap">Front Overlap (%)</label>
-                <input type="number" id="coverageFrontOverlap" class="form-input" step="1" min="0" max="100" value="70" aria-label="Front Overlap">
-              </div>
-              <div class="form-group">
-                <label for="coverageSideOverlap">Side Overlap (%)</label>
-                <input type="number" id="coverageSideOverlap" class="form-input" step="1" min="0" max="100" value="60" aria-label="Side Overlap">
-              </div>
-              <div class="form-group">
-                <label for="coverageTargetGSD" class="tooltip">Target GSD (cm/pixel)
-                  <span class="tooltiptext">Ground Sample Distance - the size of each pixel on the ground</span>
-                </label>
-                <input type="number" id="coverageTargetGSD" class="form-input" step="0.1" min="0.5" max="10" value="2.5" aria-label="Target GSD">
-              </div>
-              <button type="button" id="calculateCoverage" class="btn btn-primary">Calculate Coverage</button>
-              <div id="coverageResults" class="coverage-results is-hidden">
-                <div class="coverage-results-item">
-                  <span>Photos Needed:</span>
-                  <strong id="coveragePhotosNeeded">-</strong>
-                </div>
-                <div class="coverage-results-item">
-                  <span>Coverage per Photo:</span>
-                  <strong id="coveragePerPhoto">-</strong>
-                </div>
-                <div class="coverage-results-item">
-                  <span>GSD:</span>
-                  <strong id="coverageGSD">-</strong>
-                </div>
-                <div class="coverage-results-item">
-                  <span>Estimated Flight Time:</span>
-                  <strong id="coverageFlightTime">-</strong>
-                </div>
-                <div class="coverage-results-item">
-                  <span>Total Flight Distance:</span>
-                  <strong id="coverageFlightDistance">-</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="section">
-            <h3>Create Quote</h3>
-            <form id="quoteForm" class="quote-form">
-              <div class="form-group">
-                <label for="quoteCustomer">Customer</label>
-                <select id="quoteCustomer" class="form-select" required aria-label="Customer">
-                  <option value="">Select customer...</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="quoteLot">Lot</label>
-                <select id="quoteLot" class="form-select" aria-label="Lot">
-                  <option value="">Select lot (optional)...</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="quoteServiceType">Service Type</label>
-                <select id="quoteServiceType" class="form-select" required aria-label="Service Type">
-                  <option value="">Select service...</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="quoteArea">Area (from measurements)</label>
-                <input type="number" id="quoteArea" class="form-input" step="0.01" readonly aria-label="Area from measurements">
-                <label for="quoteAreaUnit" class="is-hidden">Area Unit</label>
-                <select id="quoteAreaUnit" class="form-select" aria-label="Area Unit">
-                  <option value="acres">Acres</option>
-                  <option value="sqft">Square Feet</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="quotePhotoCount">Photo Count (auto-calculated)</label>
-                <input type="number" id="quotePhotoCount" class="form-input" step="1" readonly aria-label="Photo Count">
-              </div>
-              <div class="form-group">
-                <label for="quoteBasePrice">Base Price per Unit</label>
-                <input type="number" id="quoteBasePrice" class="form-input" step="0.01" required aria-label="Base Price">
-              </div>
-              <div id="quotePriceBreakdown" class="quote-price-breakdown is-hidden">
-                <h4>Price Breakdown</h4>
-                <div class="quote-price-item">
-                  <span>Area Cost:</span>
-                  <span id="quoteAreaCost">$0.00</span>
-                </div>
-                <div class="quote-price-item">
-                  <span>Photo Processing:</span>
-                  <span id="quotePhotoCost">$0.00</span>
-                </div>
-                <div class="quote-price-item">
-                  <span>Total:</span>
-                  <span id="quoteTotalCost">$0.00</span>
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="quoteNotes">Additional Notes</label>
-                <textarea id="quoteNotes" class="form-textarea" rows="3" aria-label="Additional Notes"></textarea>
-              </div>
-              <button type="submit" class="btn btn-primary">Create Quote</button>
-            </form>
-          </div>
-          <div class="section">
-            <h3>Saved Quotes</h3>
-            <div id="quoteList" class="quote-list"></div>
           </div>
         </div>
         <div id="settingsTab" class="tab-content">
@@ -372,13 +366,13 @@
     </div>
   </div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
   <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
   <script src="config.js"></script>
   <script src="assets/js/utils.js"></script>
   <script src="assets/js/storage.js"></script>
   <script src="assets/js/measurements.js"></script>
   <script src="assets/js/coverage.js"></script>
+  <script src="assets/js/plotting.js"></script>
   <script src="assets/js/customers.js"></script>
   <script src="assets/js/lotHistory.js"></script>
   <script src="assets/js/quote.js"></script>

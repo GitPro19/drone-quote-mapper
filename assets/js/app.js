@@ -8,6 +8,7 @@ const App = {
     App.setupTabs();
     App.setupExportImport();
     App.setupSettings();
+    LandPlotting.init();
     Customers.init();
     LotHistory.init();
     Quote.init();

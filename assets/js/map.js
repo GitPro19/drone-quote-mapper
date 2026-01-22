@@ -1,25 +1,28 @@
 const MapManager = {
   map: null,
-  drawnItems: null,
-  drawControl: null,
   satelliteLayer: null,
   streetLayer: null,
   labelsLayer: null,
   currentLayer: null,
   isSatellite: true,
-  distanceMode: false,
-  distancePoints: [],
-  distanceLayer: null,
-  gridLayer: null,
-  showGrid: false,
   coordinateDisplay: null,
   flightPathLayer: null,
   showFlightPath: false,
   addressMarker: null,
+  
+  // Plotting visualization
+  plotMarkersLayer: null,
+  plotLinesLayer: null,
+  plotAreaLayer: null,
+  previewLine: null,
+  obstacleMarkersLayer: null,
+  currentPlotMarkers: [],
+  currentPlotLines: [],
+  currentAreaPolygon: null,
 
   init: () => {
     MapManager.createMap();
-    MapManager.setupDrawing();
+    MapManager.setupPlotting();
     MapManager.setupEventListeners();
     MapManager.setupCoordinateDisplay();
   },
@@ -49,104 +52,106 @@ const MapManager = {
     MapManager.currentLayer = MapManager.satelliteLayer;
   },
 
-  setupDrawing: () => {
-    MapManager.drawnItems = new L.FeatureGroup();
-    MapManager.map.addLayer(MapManager.drawnItems);
+  setupPlotting: () => {
+    // Initialize plotting layers
+    MapManager.plotMarkersLayer = new L.FeatureGroup();
+    MapManager.plotLinesLayer = new L.FeatureGroup();
+    MapManager.plotAreaLayer = new L.FeatureGroup();
+    MapManager.obstacleMarkersLayer = new L.FeatureGroup();
     
-    const drawOptions = {
-      draw: {
-        polygon: { showArea: false },
-        rectangle: { showArea: false },
-        circle: { showArea: false },
-        marker: false,
-        polyline: false,
-        circlemarker: false
-      },
-      edit: {
-        featureGroup: MapManager.drawnItems,
-        remove: true
-      }
-    };
-    
-    MapManager.drawControl = new L.Control.Draw(drawOptions);
-    MapManager.map.addControl(MapManager.drawControl);
-    
-    MapManager.map.on(L.Draw.Event.CREATED, (e) => {
-      const layer = e.layer;
-      MapManager.drawnItems.addLayer(layer);
-      MapManager.updateAllMeasurements();
-      // Clear any existing flight path when new area is drawn
-      MapManager.clearFlightPath();
-    });
-    
-    MapManager.map.on(L.Draw.Event.EDITED, (e) => {
-      MapManager.updateAllMeasurements();
-    });
-    
-    MapManager.map.on(L.Draw.Event.DELETED, () => {
-      MapManager.updateAllMeasurements();
-    });
+    MapManager.map.addLayer(MapManager.plotMarkersLayer);
+    MapManager.map.addLayer(MapManager.plotLinesLayer);
+    MapManager.map.addLayer(MapManager.plotAreaLayer);
+    MapManager.map.addLayer(MapManager.obstacleMarkersLayer);
   },
 
   setupEventListeners: () => {
-    document.getElementById('drawPolygon').addEventListener('click', () => {
-      MapManager.exitDistanceMode();
-      new L.Draw.Polygon(MapManager.map, MapManager.drawControl.options.draw.polygon).enable();
-    });
+    // Plotting buttons
+    const startBtn = document.getElementById('startPlotting');
+    const finishBtn = document.getElementById('finishPlotting');
+    const cancelBtn = document.getElementById('cancelPlotting');
+    const clearBtn = document.getElementById('clearAllPlots');
+    const undoBtn = document.getElementById('undoLastPoint');
     
-    document.getElementById('drawRectangle').addEventListener('click', () => {
-      MapManager.exitDistanceMode();
-      new L.Draw.Rectangle(MapManager.map, MapManager.drawControl.options.draw.rectangle).enable();
-    });
-    
-    document.getElementById('drawCircle').addEventListener('click', () => {
-      MapManager.exitDistanceMode();
-      new L.Draw.Circle(MapManager.map, MapManager.drawControl.options.draw.circle).enable();
-    });
-    
-    document.getElementById('clearDrawings').addEventListener('click', () => {
-      MapManager.drawnItems.clearLayers();
-      MapManager.updateAllMeasurements();
-      MapManager.exitDistanceMode();
-      MapManager.clearFlightPath();
-    });
-    
-    document.getElementById('toggleSatellite').addEventListener('click', () => {
-      MapManager.toggleSatellite();
-    });
-    
-    document.getElementById('measurementUnit').addEventListener('change', () => {
-      MapManager.updateAllMeasurements();
-      if (MapManager.distanceMode && MapManager.distancePoints.length === 2) {
-        MapManager.updateDistanceDisplay();
-      }
-    });
-
-    const distanceBtn = document.getElementById('drawDistance');
-    if (distanceBtn) {
-      distanceBtn.addEventListener('click', () => {
-        MapManager.toggleDistanceMode();
+    if (startBtn) {
+      startBtn.addEventListener('click', () => {
+        if (typeof LandPlotting !== 'undefined') {
+          LandPlotting.startPlotting();
+        }
       });
     }
-
-    const gridBtn = document.getElementById('toggleGrid');
-    if (gridBtn) {
-      gridBtn.addEventListener('click', () => {
-        MapManager.toggleGrid();
+    
+    if (finishBtn) {
+      finishBtn.addEventListener('click', () => {
+        if (typeof LandPlotting !== 'undefined') {
+          LandPlotting.finishPlotting();
+        }
       });
     }
-
-    const flightPathBtn = document.getElementById('toggleFlightPath');
-    if (flightPathBtn) {
-      flightPathBtn.addEventListener('click', () => {
-        MapManager.toggleFlightPath();
+    
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        if (typeof LandPlotting !== 'undefined') {
+          LandPlotting.cancelPlotting();
+        }
       });
     }
-
-    const coordInputBtn = document.getElementById('goToCoordinate');
-    if (coordInputBtn) {
-      coordInputBtn.addEventListener('click', () => {
-        MapManager.goToCoordinate();
+    
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        if (typeof LandPlotting !== 'undefined') {
+          LandPlotting.clearAllPlots();
+        }
+      });
+    }
+    
+    if (undoBtn) {
+      undoBtn.addEventListener('click', () => {
+        if (typeof LandPlotting !== 'undefined') {
+          LandPlotting.undo();
+        }
+      });
+    }
+    
+    // Obstacle marking
+    const markHouseBtn = document.getElementById('markHouse');
+    const finishObstaclesBtn = document.getElementById('finishObstacleMarking');
+    const skipObstaclesBtn = document.getElementById('skipObstacles');
+    
+    if (markHouseBtn) {
+      markHouseBtn.addEventListener('click', () => {
+        MapManager.enterObstacleMarkingMode('house');
+      });
+    }
+    
+    if (finishObstaclesBtn) {
+      finishObstaclesBtn.addEventListener('click', () => {
+        if (typeof LandPlotting !== 'undefined') {
+          LandPlotting.finishObstacleMarking();
+        }
+      });
+    }
+    
+    if (skipObstaclesBtn) {
+      skipObstaclesBtn.addEventListener('click', () => {
+        if (typeof LandPlotting !== 'undefined') {
+          LandPlotting.skipObstacles();
+        }
+      });
+    }
+    
+    // Map controls
+    const toggleSatelliteBtn = document.getElementById('toggleSatellite');
+    if (toggleSatelliteBtn) {
+      toggleSatelliteBtn.addEventListener('click', () => {
+        MapManager.toggleSatellite();
+      });
+    }
+    
+    const measurementUnit = document.getElementById('measurementUnit');
+    if (measurementUnit) {
+      measurementUnit.addEventListener('change', () => {
+        MapManager.updateAllMeasurements();
       });
     }
 
@@ -165,6 +170,22 @@ const MapManager = {
         }
       });
     }
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && typeof LandPlotting !== 'undefined' && LandPlotting.isPlotting) {
+        LandPlotting.cancelPlotting();
+      } else if (e.key === 'Enter' && typeof LandPlotting !== 'undefined' && LandPlotting.isPlotting) {
+        if (LandPlotting.currentPlot && LandPlotting.currentPlot.points.length >= 3) {
+          LandPlotting.finishPlotting();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (typeof LandPlotting !== 'undefined' && LandPlotting.isPlotting) {
+          LandPlotting.undo();
+        }
+      }
+    });
   },
 
   toggleSatellite: () => {
@@ -192,33 +213,26 @@ const MapManager = {
   },
 
   updateAllMeasurements: () => {
-    const layers = MapManager.drawnItems.getLayers();
-    const unit = document.getElementById('measurementUnit').value;
+    if (typeof LandPlotting === 'undefined') return;
     
-    if (layers.length === 0) {
-      document.getElementById('currentMeasurement').textContent = '';
-      document.getElementById('quoteArea').value = 0;
+    const plots = LandPlotting.getAllPlots();
+    const unit = document.getElementById('measurementUnit')?.value || 'acres';
+    
+    if (plots.length === 0) {
+      const measurementValue = document.getElementById('measurementValue');
+      const measurementUnit = document.getElementById('measurementUnit');
+      if (measurementValue) measurementValue.textContent = '0';
+      if (measurementUnit) measurementUnit.textContent = unit;
       return;
     }
     
     let totalAreaSqMeters = 0;
     let totalPerimeterFeet = 0;
-    const individualAreas = [];
     
-    layers.forEach((layer) => {
-      const coords = Measurements.extractCoordinates(layer);
-      const type = Measurements.getLayerType(layer);
-      const area = Measurements.calculateArea(coords, type);
-      const perimeter = Measurements.calculatePerimeter(coords);
-      
-      if (area) {
-        totalAreaSqMeters += area.sqmeters || 0;
-        totalPerimeterFeet += perimeter.feet || 0;
-        individualAreas.push({
-          area: area,
-          perimeter: perimeter,
-          type: type
-        });
+    plots.forEach((plot) => {
+      if (plot.area) {
+        totalAreaSqMeters += plot.area.sqmeters || 0;
+        totalPerimeterFeet += plot.perimeter?.feet || 0;
       }
     });
     
@@ -231,21 +245,34 @@ const MapManager = {
         hectares: totalAreaSqMeters * 0.0001
       };
       
-      const areaText = Measurements.formatArea(totalArea, unit);
-      const perimeterText = `${totalPerimeterFeet.toFixed(0)} ft`;
-      const countText = layers.length > 1 ? ` (${layers.length} areas)` : '';
+      const areaValue = totalArea[unit] || 0;
+      const measurementValue = document.getElementById('measurementValue');
+      const measurementUnitLabel = document.getElementById('measurementUnitLabel');
       
-      document.getElementById('currentMeasurement').innerHTML = 
-        `<strong>Total Area:</strong> ${areaText}${countText}<br><strong>Total Perimeter:</strong> ${perimeterText}`;
+      if (measurementValue) {
+        if (unit === 'acres') {
+          measurementValue.textContent = areaValue.toFixed(2);
+        } else if (unit === 'sqft') {
+          measurementValue.textContent = areaValue.toLocaleString();
+        } else {
+          measurementValue.textContent = areaValue.toFixed(2);
+        }
+      }
       
-      document.getElementById('quoteArea').value = totalArea[unit] || 0;
-      document.getElementById('quoteAreaUnit').value = unit;
+      if (measurementUnitLabel) {
+        measurementUnitLabel.textContent = unit;
+      }
       
-      // Auto-trigger coverage calculation with combined area
-      if (typeof CoverageCalculator !== 'undefined') {
-        // Use bounding box of all layers for coverage calculation
-        const allBounds = MapManager.drawnItems.getBounds();
-        if (allBounds.isValid()) {
+      // Update quote form if it exists
+      const quoteArea = document.getElementById('quoteArea');
+      const quoteAreaUnit = document.getElementById('quoteAreaUnit');
+      if (quoteArea) quoteArea.value = areaValue;
+      if (quoteAreaUnit) quoteAreaUnit.value = unit;
+      
+      // Auto-trigger coverage calculation
+      if (typeof CoverageCalculator !== 'undefined' && plots.length > 0) {
+        const allBounds = MapManager.getAllPlotsBounds();
+        if (allBounds && allBounds.isValid()) {
           const combinedCoords = [
             [allBounds.getSouthWest().lat, allBounds.getSouthWest().lng],
             [allBounds.getNorthWest().lat, allBounds.getNorthWest().lng],
@@ -258,19 +285,32 @@ const MapManager = {
       }
     }
   },
+  
+  getAllPlotsBounds: () => {
+    if (typeof LandPlotting === 'undefined') return null;
+    const plots = LandPlotting.getAllPlots();
+    if (plots.length === 0) return null;
+    
+    const allPoints = [];
+    plots.forEach(plot => {
+      plot.points.forEach(point => {
+        allPoints.push([point.lat, point.lng]);
+      });
+    });
+    
+    if (allPoints.length === 0) return null;
+    
+    return L.latLngBounds(allPoints);
+  },
 
   autoCalculateCoverage: (coords, area) => {
-    // Only auto-calculate if CoverageCalculator is available
-    if (typeof CoverageCalculator === 'undefined') {
-      return;
-    }
+    // Auto-calculate coverage when area is updated
+    if (typeof CoverageCalculator === 'undefined') return;
     
-    const areaValue = parseFloat(document.getElementById('quoteArea').value) || 0;
-    const areaUnit = document.getElementById('quoteAreaUnit').value;
+    const areaValue = parseFloat(document.getElementById('quoteArea')?.value) || 0;
+    const areaUnit = document.getElementById('quoteAreaUnit')?.value || 'acres';
     
-    if (areaValue <= 0) {
-      return;
-    }
+    if (areaValue <= 0) return;
     
     // Convert area to square meters
     let areaSqMeters = 0;
@@ -314,56 +354,9 @@ const MapManager = {
       if (typeof Quote !== 'undefined' && document.getElementById('quoteBasePrice')?.value) {
         Quote.calculatePrice();
       }
-      
-      // Update coverage results display if visible
-      const coverageResults = document.getElementById('coverageResults');
-      if (coverageResults && !coverageResults.classList.contains('is-hidden')) {
-        const photosNeededEl = document.getElementById('coveragePhotosNeeded');
-        const perPhotoEl = document.getElementById('coveragePerPhoto');
-        const gsdEl = document.getElementById('coverageGSD');
-        const flightTimeEl = document.getElementById('coverageFlightTime');
-        const flightDistanceEl = document.getElementById('coverageFlightDistance');
-        
-        if (photosNeededEl) photosNeededEl.textContent = result.photos.recommended;
-        if (perPhotoEl) perPhotoEl.textContent = `${result.coverage.widthFeet.toFixed(0)}' × ${result.coverage.heightFeet.toFixed(0)}'`;
-        if (gsdEl) gsdEl.textContent = `${result.gsd.toFixed(2)} cm/pixel`;
-        if (flightTimeEl) flightTimeEl.textContent = result.flightTime.formatted;
-        if (flightDistanceEl && result.flightPath) {
-          flightDistanceEl.textContent = 
-            `${result.flightPath.totalDistanceFeet.toFixed(0)} ft (${result.flightPath.totalDistanceMiles.toFixed(2)} mi)`;
-        }
-      }
     }
   },
 
-  displayBoundary: (boundary) => {
-    MapManager.drawnItems.clearLayers();
-    const coords = boundary.coordinates.map(c => [c[0], c[1]]);
-    let layer;
-    if (boundary.type === 'Polygon' || boundary.type === 'Rectangle') {
-      layer = L.polygon(coords, { color: '#3388ff', fillColor: '#3388ff', fillOpacity: 0.2 });
-    } else if (boundary.type === 'Circle') {
-      const center = coords[0];
-      const radius = turf.distance(turf.point([center[1], center[0]]), turf.point([coords[1][1], coords[1][0]]), { units: 'meters' });
-      layer = L.circle(center, { radius: radius });
-    }
-    if (layer) {
-      MapManager.drawnItems.addLayer(layer);
-      MapManager.map.fitBounds(layer.getBounds());
-    }
-  },
-
-  displayBoundaryComparison: (boundary1, boundary2) => {
-    MapManager.drawnItems.clearLayers();
-    const coords1 = boundary1.coordinates.map(c => [c[0], c[1]]);
-    const coords2 = boundary2.coordinates.map(c => [c[0], c[1]]);
-    const layer1 = L.polygon(coords1, { color: '#ff0000', fillColor: '#ff0000', fillOpacity: 0.3 });
-    const layer2 = L.polygon(coords2, { color: '#00ff00', fillColor: '#00ff00', fillOpacity: 0.3 });
-    MapManager.drawnItems.addLayer(layer1);
-    MapManager.drawnItems.addLayer(layer2);
-    const group = new L.FeatureGroup([layer1, layer2]);
-    MapManager.map.fitBounds(group.getBounds());
-  },
 
   setupCoordinateDisplay: () => {
     MapManager.coordinateDisplay = L.control({ position: 'bottomright' });
@@ -385,174 +378,6 @@ const MapManager = {
     });
   },
 
-  toggleDistanceMode: () => {
-    MapManager.distanceMode = !MapManager.distanceMode;
-    if (MapManager.distanceMode) {
-      MapManager.distancePoints = [];
-      if (MapManager.distanceLayer) {
-        MapManager.map.removeLayer(MapManager.distanceLayer);
-      }
-      MapManager.distanceLayer = new L.FeatureGroup();
-      MapManager.map.addLayer(MapManager.distanceLayer);
-      MapManager.map.on('click', MapManager.handleDistanceClick);
-      document.getElementById('drawDistance').classList.add('active');
-      document.getElementById('currentMeasurement').innerHTML = '<strong>Distance Mode:</strong> Click two points on the map';
-    } else {
-      MapManager.exitDistanceMode();
-    }
-  },
-
-  exitDistanceMode: () => {
-    if (MapManager.distanceMode) {
-      MapManager.distanceMode = false;
-      MapManager.map.off('click', MapManager.handleDistanceClick);
-      if (MapManager.distanceLayer) {
-        MapManager.map.removeLayer(MapManager.distanceLayer);
-        MapManager.distanceLayer = null;
-      }
-      MapManager.distancePoints = [];
-      const btn = document.getElementById('drawDistance');
-      if (btn) btn.classList.remove('active');
-    }
-  },
-
-  handleDistanceClick: (e) => {
-    if (!MapManager.distanceMode) return;
-    
-    const point = [e.latlng.lat, e.latlng.lng];
-    MapManager.distancePoints.push(point);
-    
-    const marker = L.marker(e.latlng, {
-      icon: L.divIcon({
-        className: 'distance-marker',
-        html: `<div style="background: #4CAF50; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${MapManager.distancePoints.length}</div>`,
-        iconSize: [20, 20]
-      })
-    });
-    MapManager.distanceLayer.addLayer(marker);
-
-    if (MapManager.distancePoints.length === 2) {
-      MapManager.updateDistanceDisplay();
-      MapManager.exitDistanceMode();
-    }
-  },
-
-  updateDistanceDisplay: () => {
-    if (MapManager.distancePoints.length !== 2) return;
-    
-    const distance = Measurements.calculateDistance(
-      MapManager.distancePoints[0],
-      MapManager.distancePoints[1]
-    );
-    const unit = document.getElementById('measurementUnit').value === 'acres' ? 'feet' : 
-                 document.getElementById('measurementUnit').value === 'sqmeters' ? 'meters' : 'feet';
-    const distanceText = Measurements.formatDistance(distance, unit);
-    
-    const line = L.polyline(
-      [MapManager.distancePoints[0], MapManager.distancePoints[1]],
-      { color: '#4CAF50', weight: 2, dashArray: '5, 5' }
-    );
-    MapManager.distanceLayer.addLayer(line);
-
-    const midPoint = [
-      (MapManager.distancePoints[0][0] + MapManager.distancePoints[1][0]) / 2,
-      (MapManager.distancePoints[0][1] + MapManager.distancePoints[1][1]) / 2
-    ];
-    const label = L.marker(midPoint, {
-      icon: L.divIcon({
-        className: 'distance-label',
-        html: `<div style="background: rgba(76, 175, 80, 0.9); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; white-space: nowrap;">${distanceText}</div>`,
-        iconSize: null
-      })
-    });
-    MapManager.distanceLayer.addLayer(label);
-
-    document.getElementById('currentMeasurement').innerHTML = 
-      `<strong>Distance:</strong> ${distanceText}`;
-  },
-
-  toggleGrid: () => {
-    MapManager.showGrid = !MapManager.showGrid;
-    const btn = document.getElementById('toggleGrid');
-    
-    if (MapManager.showGrid) {
-      if (!MapManager.gridLayer) {
-        MapManager.gridLayer = L.layerGroup();
-        MapManager.updateGrid();
-        MapManager.map.on('moveend', MapManager.updateGrid);
-        MapManager.map.on('zoomend', MapManager.updateGrid);
-      }
-      MapManager.map.addLayer(MapManager.gridLayer);
-      if (btn) btn.classList.add('active');
-    } else {
-      if (MapManager.gridLayer) {
-        MapManager.map.removeLayer(MapManager.gridLayer);
-      }
-      MapManager.map.off('moveend', MapManager.updateGrid);
-      MapManager.map.off('zoomend', MapManager.updateGrid);
-      if (btn) btn.classList.remove('active');
-    }
-  },
-
-  updateGrid: () => {
-    if (!MapManager.gridLayer || !MapManager.showGrid) return;
-    
-    MapManager.gridLayer.clearLayers();
-    const bounds = MapManager.map.getBounds();
-    const zoom = MapManager.map.getZoom();
-    
-    let interval;
-    if (zoom >= 15) interval = 0.001;
-    else if (zoom >= 12) interval = 0.01;
-    else if (zoom >= 9) interval = 0.1;
-    else interval = 1;
-    
-    for (let lat = Math.floor(bounds.getSouth() / interval) * interval; lat <= bounds.getNorth(); lat += interval) {
-      const line = L.polyline(
-        [[lat, bounds.getWest()], [lat, bounds.getEast()]],
-        { color: '#666', weight: 1, opacity: 0.3, dashArray: '2, 2' }
-      );
-      MapManager.gridLayer.addLayer(line);
-    }
-    
-    for (let lng = Math.floor(bounds.getWest() / interval) * interval; lng <= bounds.getEast(); lng += interval) {
-      const line = L.polyline(
-        [[bounds.getSouth(), lng], [bounds.getNorth(), lng]],
-        { color: '#666', weight: 1, opacity: 0.3, dashArray: '2, 2' }
-      );
-      MapManager.gridLayer.addLayer(line);
-    }
-  },
-
-  goToCoordinate: () => {
-    const latInput = document.getElementById('coordinateLat');
-    const lngInput = document.getElementById('coordinateLng');
-    
-    if (!latInput || !lngInput) return;
-    
-    const lat = parseFloat(latInput.value);
-    const lng = parseFloat(lngInput.value);
-    
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      alert('Please enter valid coordinates (Lat: -90 to 90, Lng: -180 to 180)');
-      return;
-    }
-    
-    MapManager.map.setView([lat, lng], MapManager.map.getZoom());
-    const marker = L.marker([lat, lng], {
-      icon: L.icon({
-        iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBmaWxsPSIjNENBRjUwIi8+Cjwvc3ZnPg==',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      })
-    });
-    marker.addTo(MapManager.map);
-    marker.bindPopup(`Coordinates: ${Measurements.formatCoordinate(lat, lng)}`).openPopup();
-    
-    setTimeout(() => {
-      MapManager.map.removeLayer(marker);
-    }, 3000);
-  },
 
   updateFlightPath: (flightPath) => {
     if (!flightPath || !flightPath.waypoints) return;
@@ -618,6 +443,341 @@ const MapManager = {
       MapManager.flightPathLayer = null;
       MapManager.showFlightPath = false;
     }
+  },
+
+  enterPlottingMode: () => {
+    MapManager.map.on('click', MapManager.handlePlottingClick);
+    MapManager.map.on('mousemove', MapManager.handlePlottingMouseMove);
+    MapManager.map.getContainer().style.cursor = 'crosshair';
+  },
+
+  exitPlottingMode: () => {
+    MapManager.map.off('click', MapManager.handlePlottingClick);
+    MapManager.map.off('mousemove', MapManager.handlePlottingMouseMove);
+    MapManager.map.getContainer().style.cursor = '';
+    if (MapManager.previewLine) {
+      MapManager.map.removeLayer(MapManager.previewLine);
+      MapManager.previewLine = null;
+    }
+  },
+
+  handlePlottingClick: (e) => {
+    if (typeof LandPlotting === 'undefined' || !LandPlotting.isPlotting) return;
+    
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    LandPlotting.addPoint(lat, lng);
+  },
+
+  handlePlottingMouseMove: (e) => {
+    if (typeof LandPlotting === 'undefined' || !LandPlotting.isPlotting || !LandPlotting.currentPlot) return;
+    
+    const points = LandPlotting.currentPlot.points;
+    if (points.length === 0) return;
+    
+    const lastPoint = points[points.length - 1];
+    const currentLat = e.latlng.lat;
+    const currentLng = e.latlng.lng;
+    
+    // Update preview line
+    if (MapManager.previewLine) {
+      MapManager.map.removeLayer(MapManager.previewLine);
+    }
+    
+    MapManager.previewLine = L.polyline(
+      [[lastPoint.lat, lastPoint.lng], [currentLat, currentLng]],
+      { color: '#999', weight: 2, dashArray: '5, 5', opacity: 0.5 }
+    );
+    MapManager.previewLine.addTo(MapManager.map);
+  },
+
+  addPlotPoint: (lat, lng, index) => {
+    const isStart = index === 0;
+    const marker = MapManager.createPointMarker(lat, lng, index, isStart, false);
+    
+    MapManager.currentPlotMarkers.push(marker);
+    MapManager.plotMarkersLayer.addLayer(marker);
+    
+    // Make marker draggable
+    marker.draggable = true;
+    marker.on('dragend', (e) => {
+      const newLat = e.target.getLatLng().lat;
+      const newLng = e.target.getLatLng().lng;
+      if (typeof LandPlotting !== 'undefined') {
+        LandPlotting.movePoint(index, newLat, newLng);
+      }
+    });
+    
+    // Update connecting lines
+    if (MapManager.currentPlotMarkers.length > 1) {
+      const prevMarker = MapManager.currentPlotMarkers[MapManager.currentPlotMarkers.length - 2];
+      const prevLat = prevMarker.getLatLng().lat;
+      const prevLng = prevMarker.getLatLng().lng;
+      
+      const line = L.polyline(
+        [[prevLat, prevLng], [lat, lng]],
+        { color: '#3388ff', weight: 2 }
+      );
+      
+      // Add distance label
+      const distance = Measurements.calculateDistance([prevLat, prevLng], [lat, lng]);
+      const midLat = (prevLat + lat) / 2;
+      const midLng = (prevLng + lng) / 2;
+      
+      const label = L.marker([midLat, midLng], {
+        icon: L.divIcon({
+          className: 'distance-label',
+          html: `<div class="distance-label-text">${distance.feet.toFixed(0)} ft</div>`,
+          iconSize: null
+        })
+      });
+      
+      MapManager.currentPlotLines.push({ line, label });
+      MapManager.plotLinesLayer.addLayer(line);
+      MapManager.plotLinesLayer.addLayer(label);
+    }
+    
+    // Update area preview
+    MapManager.updateAreaPreview();
+  },
+
+  createPointMarker: (lat, lng, index, isStart, isCurrent) => {
+    let color = '#3388ff'; // Blue for intermediate
+    let label = (index + 1).toString();
+    
+    if (isStart) {
+      color = '#10b981'; // Green for start
+      label = 'START';
+    } else if (isCurrent) {
+      color = '#f59e0b'; // Orange for current
+    }
+    
+    return L.marker([lat, lng], {
+      icon: L.divIcon({
+        className: `plotting-marker ${isStart ? 'start' : isCurrent ? 'current' : 'point'}`,
+        html: `<div class="plotting-marker-inner" style="background: ${color};">
+          <span class="plotting-marker-label">${label}</span>
+        </div>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      }),
+      draggable: true
+    });
+  },
+
+  updateAreaPreview: () => {
+    if (typeof LandPlotting === 'undefined' || !LandPlotting.currentPlot) return;
+    
+    const points = LandPlotting.currentPlot.points;
+    if (points.length < 3) {
+      if (MapManager.currentAreaPolygon) {
+        MapManager.plotAreaLayer.removeLayer(MapManager.currentAreaPolygon);
+        MapManager.currentAreaPolygon = null;
+      }
+      return;
+    }
+    
+    const coords = points.map(p => [p.lat, p.lng]);
+    
+    if (MapManager.currentAreaPolygon) {
+      MapManager.plotAreaLayer.removeLayer(MapManager.currentAreaPolygon);
+    }
+    
+    MapManager.currentAreaPolygon = L.polygon(coords, {
+      color: '#3388ff',
+      fillColor: '#3388ff',
+      fillOpacity: 0.3,
+      weight: 2
+    });
+    
+    MapManager.plotAreaLayer.addLayer(MapManager.currentAreaPolygon);
+  },
+
+  updatePlotVisualization: (plot) => {
+    if (!plot) return;
+    
+    // Clear current visualization
+    MapManager.currentPlotMarkers.forEach(m => MapManager.plotMarkersLayer.removeLayer(m));
+    MapManager.currentPlotLines.forEach(({ line, label }) => {
+      MapManager.plotLinesLayer.removeLayer(line);
+      MapManager.plotLinesLayer.removeLayer(label);
+    });
+    MapManager.currentPlotMarkers = [];
+    MapManager.currentPlotLines = [];
+    
+    // Redraw all points and lines
+    plot.points.forEach((point, index) => {
+      MapManager.addPlotPoint(point.lat, point.lng, index);
+    });
+    
+    MapManager.updateAreaPreview();
+  },
+
+  clearPlotVisualization: () => {
+    MapManager.currentPlotMarkers.forEach(m => MapManager.plotMarkersLayer.removeLayer(m));
+    MapManager.currentPlotLines.forEach(({ line, label }) => {
+      MapManager.plotLinesLayer.removeLayer(line);
+      MapManager.plotLinesLayer.removeLayer(label);
+    });
+    if (MapManager.currentAreaPolygon) {
+      MapManager.plotAreaLayer.removeLayer(MapManager.currentAreaPolygon);
+    }
+    MapManager.currentPlotMarkers = [];
+    MapManager.currentPlotLines = [];
+    MapManager.currentAreaPolygon = null;
+  },
+
+  displayPlot: (plot) => {
+    if (!plot || !plot.points || plot.points.length < 3) return;
+    
+    const coords = plot.points.map(p => [p.lat, p.lng]);
+    
+    // Draw polygon
+    const polygon = L.polygon(coords, {
+      color: plot.color || '#3388ff',
+      fillColor: plot.color || '#3388ff',
+      fillOpacity: 0.2,
+      weight: 2
+    });
+    MapManager.plotAreaLayer.addLayer(polygon);
+    
+    // Draw points
+    plot.points.forEach((point, index) => {
+      const marker = MapManager.createPointMarker(point.lat, point.lng, index, index === 0, false);
+      MapManager.plotMarkersLayer.addLayer(marker);
+    });
+    
+    // Draw lines
+    for (let i = 0; i < plot.points.length; i++) {
+      const current = plot.points[i];
+      const next = plot.points[(i + 1) % plot.points.length];
+      
+      const line = L.polyline(
+        [[current.lat, current.lng], [next.lat, next.lng]],
+        { color: plot.color || '#3388ff', weight: 2 }
+      );
+      MapManager.plotLinesLayer.addLayer(line);
+    }
+    
+    // Display obstacles
+    if (plot.obstacles) {
+      plot.obstacles.forEach(obstacle => {
+        MapManager.addObstacleMarker(obstacle);
+      });
+    }
+  },
+
+  clearAllPlots: () => {
+    MapManager.plotMarkersLayer.clearLayers();
+    MapManager.plotLinesLayer.clearLayers();
+    MapManager.plotAreaLayer.clearLayers();
+    MapManager.obstacleMarkersLayer.clearLayers();
+    MapManager.currentPlotMarkers = [];
+    MapManager.currentPlotLines = [];
+    MapManager.currentAreaPolygon = null;
+  },
+
+  enterObstacleMarkingMode: (type) => {
+    if (typeof LandPlotting === 'undefined') return;
+    
+    const plots = LandPlotting.getAllPlots();
+    if (plots.length === 0) {
+      alert('Please finish plotting your land first');
+      return;
+    }
+    
+    LandPlotting.isMarkingObstacles = true;
+    const currentPlot = plots[plots.length - 1];
+    
+    // Remove any existing click handlers first
+    MapManager.map.off('click');
+    
+    const obstacleClickHandler = (e) => {
+      if (!LandPlotting.isMarkingObstacles) {
+        MapManager.map.off('click', obstacleClickHandler);
+        return;
+      }
+      const obstacle = LandPlotting.addObstacle(currentPlot.id, e.latlng.lat, e.latlng.lng, type);
+      MapManager.updateObstaclesList();
+    };
+    
+    MapManager.map.on('click', obstacleClickHandler);
+    MapManager.map.getContainer().style.cursor = 'crosshair';
+    
+    LandPlotting.updateWorkflowSteps();
+  },
+
+  addObstacleMarker: (obstacle) => {
+    const marker = L.marker([obstacle.position.lat, obstacle.position.lng], {
+      icon: L.divIcon({
+        className: 'obstacle-marker obstacle-marker-' + obstacle.type,
+        html: `<div class="obstacle-marker-inner">🏠</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      }),
+      draggable: true
+    });
+    
+    marker.obstacleId = obstacle.id;
+    marker.on('dragend', (e) => {
+      // Update obstacle position
+      const plot = LandPlotting.allPlots.find(p => p.id === obstacle.plotId);
+      if (plot) {
+        const obs = plot.obstacles.find(o => o.id === obstacle.id);
+        if (obs) {
+          obs.position.lat = e.target.getLatLng().lat;
+          obs.position.lng = e.target.getLatLng().lng;
+          LandPlotting.savePlots();
+        }
+      }
+    });
+    
+    marker.on('contextmenu', (e) => {
+      e.originalEvent.preventDefault();
+      if (confirm('Delete this obstacle?')) {
+        LandPlotting.removeObstacle(obstacle.plotId, obstacle.id);
+        MapManager.updateObstaclesList();
+      }
+    });
+    
+    MapManager.obstacleMarkersLayer.addLayer(marker);
+  },
+
+  removeObstacleMarker: (obstacleId) => {
+    MapManager.obstacleMarkersLayer.eachLayer((layer) => {
+      if (layer.obstacleId === obstacleId) {
+        MapManager.obstacleMarkersLayer.removeLayer(layer);
+      }
+    });
+  },
+
+  updateObstaclesList: () => {
+    if (typeof LandPlotting === 'undefined') return;
+    const plots = LandPlotting.getAllPlots();
+    if (plots.length === 0) return;
+    
+    const currentPlot = plots[plots.length - 1];
+    const obstaclesList = document.getElementById('obstaclesList');
+    if (!obstaclesList) return;
+    
+    if (!currentPlot.obstacles || currentPlot.obstacles.length === 0) {
+      obstaclesList.innerHTML = '<p class="empty-state">No houses marked yet</p>';
+      return;
+    }
+    
+    obstaclesList.innerHTML = currentPlot.obstacles.map((obs, index) => `
+      <div class="obstacle-item">
+        <span>House ${index + 1}</span>
+        <button class="btn-icon delete-obstacle" data-id="${obs.id}">Delete</button>
+      </div>
+    `).join('');
+    
+    obstaclesList.querySelectorAll('.delete-obstacle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        LandPlotting.removeObstacle(currentPlot.id, btn.dataset.id);
+        MapManager.updateObstaclesList();
+      });
+    });
   },
 
   searchAddress: () => {

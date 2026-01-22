@@ -9,9 +9,6 @@ const Quote = {
       e.preventDefault();
       Quote.createQuote();
     });
-    document.getElementById('quoteCustomer').addEventListener('change', () => {
-      Quote.updateLotSelect();
-    });
     document.getElementById('exportQuote')?.addEventListener('click', () => Quote.exportQuote());
     document.getElementById('printQuote')?.addEventListener('click', () => window.print());
     const list = document.getElementById('quoteList');
@@ -60,17 +57,6 @@ const Quote = {
       }
     });
   },
-  updateLotSelect: () => {
-    const customerId = document.getElementById('quoteCustomer').value;
-    const select = document.getElementById('quoteLot');
-    if (customerId) {
-      const lots = Storage.lots.findByCustomer(customerId);
-      select.innerHTML = '<option value="">Select lot (optional)...</option>' +
-        lots.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
-    } else {
-      select.innerHTML = '<option value="">Select lot (optional)...</option>';
-    }
-  },
   calculatePrice: () => {
     const area = parseFloat(document.getElementById('quoteArea').value) || 0;
     const unit = document.getElementById('quoteAreaUnit').value;
@@ -108,18 +94,21 @@ const Quote = {
   },
   createQuote: () => {
     const customerId = document.getElementById('quoteCustomer').value;
-    const lotId = document.getElementById('quoteLot').value;
     const serviceType = document.getElementById('quoteServiceType').value;
-    const area = parseFloat(document.getElementById('quoteArea').value) || 0;
-    const areaUnit = document.getElementById('quoteAreaUnit').value;
+    const area = parseFloat(document.getElementById('quoteArea')?.value) || 0;
+    const areaUnit = document.getElementById('quoteAreaUnit')?.value || 'acres';
     const basePrice = parseFloat(document.getElementById('quoteBasePrice').value) || 0;
-    const photoCount = parseInt(document.getElementById('quotePhotoCount').value) || 0;
-    const notes = document.getElementById('quoteNotes').value;
+    const photoCount = parseInt(document.getElementById('quotePhotoCount')?.value) || 0;
     const total = Quote.calculatePrice();
     const service = CONFIG.serviceTypes.find(s => s.id === serviceType);
+    
+    if (!customerId || !serviceType) {
+      alert('Please fill in all required fields');
+      return;
+    }
+    
     const quote = {
       customerId: customerId,
-      lotId: lotId || null,
       serviceType: serviceType,
       serviceName: service ? service.name : '',
       area: area,
@@ -129,7 +118,6 @@ const Quote = {
       photoCost: Quote.calculatePhotoCost(photoCount),
       areaCost: parseFloat(document.getElementById('quoteAreaCost')?.textContent.replace('$', '') || 0),
       total: total,
-      notes: notes,
       status: 'draft'
     };
     Storage.quotes.add(quote);
@@ -140,43 +128,52 @@ const Quote = {
   },
   
   calculateCoverage: () => {
-    const area = parseFloat(document.getElementById('quoteArea').value) || 0;
-    const areaUnit = document.getElementById('quoteAreaUnit').value;
-    
-    if (area <= 0) {
-      alert('Please draw an area on the map first or enter an area value.');
+    if (typeof LandPlotting === 'undefined') {
+      alert('Plotting system not initialized');
       return;
     }
     
-    // Convert area to square meters
-    let areaSqMeters = 0;
-    if (areaUnit === 'acres') {
-      areaSqMeters = area * 4046.86;
-    } else if (areaUnit === 'sqft') {
-      areaSqMeters = area * 0.092903;
-    } else if (areaUnit === 'sqmeters') {
-      areaSqMeters = area;
-    } else if (areaUnit === 'hectares') {
-      areaSqMeters = area * 10000;
+    const plots = LandPlotting.getAllPlots();
+    if (plots.length === 0) {
+      alert('Please plot your land first.');
+      return;
+    }
+    
+    // Get total area from plots
+    let totalAreaSqMeters = 0;
+    plots.forEach(plot => {
+      if (plot.area) {
+        totalAreaSqMeters += plot.area.sqmeters || 0;
+      }
+    });
+    
+    if (totalAreaSqMeters <= 0) {
+      alert('No area calculated. Please finish plotting your land.');
+      return;
     }
     
     // Get coverage parameters
-    const altitude = parseFloat(document.getElementById('coverageAltitude').value) || CONFIG.droneSpecs.defaultAltitude;
-    const frontOverlap = parseFloat(document.getElementById('coverageFrontOverlap').value) || CONFIG.coverageDefaults.frontOverlap;
-    const sideOverlap = parseFloat(document.getElementById('coverageSideOverlap').value) || CONFIG.coverageDefaults.sideOverlap;
+    const altitude = parseFloat(document.getElementById('coverageAltitude')?.value) || CONFIG.droneSpecs.defaultAltitude;
+    const frontOverlap = parseFloat(document.getElementById('coverageFrontOverlap')?.value) || CONFIG.coverageDefaults.frontOverlap;
+    const sideOverlap = parseFloat(document.getElementById('coverageSideOverlap')?.value) || CONFIG.coverageDefaults.sideOverlap;
     
-    // Get current drawn area coordinates
-    const drawnLayers = MapManager.drawnItems.getLayers();
+    // Get combined coordinates from all plots
+    const allBounds = MapManager.getAllPlotsBounds();
     let areaCoordinates = null;
-    if (drawnLayers.length > 0) {
-      const layer = drawnLayers[drawnLayers.length - 1];
-      areaCoordinates = Measurements.extractCoordinates(layer);
+    if (allBounds && allBounds.isValid()) {
+      areaCoordinates = [
+        [allBounds.getSouthWest().lat, allBounds.getSouthWest().lng],
+        [allBounds.getNorthWest().lat, allBounds.getNorthWest().lng],
+        [allBounds.getNorthEast().lat, allBounds.getNorthEast().lng],
+        [allBounds.getSouthEast().lat, allBounds.getSouthEast().lng],
+        [allBounds.getSouthWest().lat, allBounds.getSouthWest().lng]
+      ];
     }
     
     // Calculate coverage
     const result = CoverageCalculator.calculate(
       areaCoordinates,
-      areaSqMeters,
+      totalAreaSqMeters,
       altitude,
       frontOverlap,
       sideOverlap,
@@ -189,23 +186,38 @@ const Quote = {
     }
     
     // Update UI with results
-    document.getElementById('coveragePhotosNeeded').textContent = result.photos.recommended;
-    document.getElementById('coveragePerPhoto').textContent = 
-      `${result.coverage.widthFeet.toFixed(0)}' × ${result.coverage.heightFeet.toFixed(0)}'`;
-    document.getElementById('coverageGSD').textContent = `${result.gsd.toFixed(2)} cm/pixel`;
-    document.getElementById('coverageFlightTime').textContent = result.flightTime.formatted;
-    if (result.flightPath) {
-      document.getElementById('coverageFlightDistance').textContent = 
-        `${result.flightPath.totalDistanceFeet.toFixed(0)} ft (${result.flightPath.totalDistanceMiles.toFixed(2)} mi)`;
-    } else {
-      document.getElementById('coverageFlightDistance').textContent = 'N/A';
+    const resultsEl = document.getElementById('coverageResults');
+    if (resultsEl) {
+      resultsEl.innerHTML = `
+        <div class="coverage-results-item">
+          <span>Photos Needed:</span>
+          <strong>${result.photos.recommended}</strong>
+        </div>
+        <div class="coverage-results-item">
+          <span>Coverage per Photo:</span>
+          <strong>${result.coverage.widthFeet.toFixed(0)}' × ${result.coverage.heightFeet.toFixed(0)}'</strong>
+        </div>
+        <div class="coverage-results-item">
+          <span>GSD:</span>
+          <strong>${result.gsd.toFixed(2)} cm/pixel</strong>
+        </div>
+        <div class="coverage-results-item">
+          <span>Estimated Flight Time:</span>
+          <strong>${result.flightTime.formatted}</strong>
+        </div>
+        <div class="coverage-results-item">
+          <span>Total Flight Distance:</span>
+          <strong>${result.flightPath ? `${result.flightPath.totalDistanceFeet.toFixed(0)} ft (${result.flightPath.totalDistanceMiles.toFixed(2)} mi)` : 'N/A'}</strong>
+        </div>
+      `;
+      resultsEl.classList.remove('is-hidden');
     }
     
-    document.getElementById('coverageResults').classList.remove('is-hidden');
-    
     // Update quote form with photo count
-    document.getElementById('quotePhotoCount').value = result.photos.recommended;
-    Quote.calculatePrice();
+    const photoCountEl = document.getElementById('quotePhotoCount');
+    if (photoCountEl) {
+      photoCountEl.value = result.photos.recommended;
+    }
     
     // Update flight path visualization if available
     if (result.flightPath && typeof MapManager.updateFlightPath === 'function') {
