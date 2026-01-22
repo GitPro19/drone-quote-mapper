@@ -1,4 +1,4 @@
-﻿const Measurements = {
+const Measurements = {
   toLngLat: (coordinates) => coordinates.map(coord => [coord[1], coord[0]]),
   calculateArea: (coordinates, type = 'Polygon') => {
     if (!coordinates || coordinates.length < 3) return null;
@@ -96,5 +96,66 @@
     if (layer instanceof L.Circle) return 'Circle';
     if (layer instanceof L.Polyline) return 'Polyline';
     return 'Unknown';
+  },
+  calculateDistance: (point1, point2) => {
+    if (!point1 || !point2) return { meters: 0, feet: 0, miles: 0 };
+    try {
+      const fromPoint = turf.point([point1[1], point1[0]]);
+      const toPoint = turf.point([point2[1], point2[0]]);
+      const distanceMeters = turf.distance(fromPoint, toPoint, { units: 'meters' });
+      return {
+        meters: distanceMeters,
+        feet: distanceMeters * 3.28084,
+        miles: distanceMeters * 0.000621371
+      };
+    } catch (e) {
+      console.error('Distance calculation error:', e);
+      return { meters: 0, feet: 0, miles: 0 };
+    }
+  },
+  formatDistance: (distance, unit = 'feet') => {
+    if (!distance) return '0';
+    const value = distance[unit] || 0;
+    if (unit === 'feet') {
+      return value.toFixed(0) + ' ft';
+    }
+    if (unit === 'meters') {
+      return value.toFixed(2) + ' m';
+    }
+    if (unit === 'miles') {
+      return value.toFixed(3) + ' mi';
+    }
+    return value.toString();
+  },
+  formatCoordinate: (lat, lng, format = 'decimal') => {
+    if (format === 'decimal') {
+      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } else if (format === 'dms') {
+      const latDMS = Measurements.decimalToDMS(lat, true);
+      const lngDMS = Measurements.decimalToDMS(lng, false);
+      return `${latDMS} ${lngDMS}`;
+    }
+    return `${lat}, ${lng}`;
+  },
+  decimalToDMS: (decimal, isLat) => {
+    const absolute = Math.abs(decimal);
+    const degrees = Math.floor(absolute);
+    const minutesFloat = (absolute - degrees) * 60;
+    const minutes = Math.floor(minutesFloat);
+    const seconds = (minutesFloat - minutes) * 60;
+    const direction = isLat ? (decimal >= 0 ? 'N' : 'S') : (decimal >= 0 ? 'E' : 'W');
+    return `${degrees}°${minutes}'${seconds.toFixed(2)}"${direction}`;
+  },
+  parseCoordinate: (input) => {
+    const trimmed = input.trim();
+    const parts = trimmed.split(/[,\s]+/);
+    if (parts.length >= 2) {
+      const lat = parseFloat(parts[0]);
+      const lng = parseFloat(parts[1]);
+      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return [lat, lng];
+      }
+    }
+    return null;
   }
 };

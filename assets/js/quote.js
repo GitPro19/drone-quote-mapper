@@ -1,4 +1,4 @@
-﻿const Quote = {
+const Quote = {
   init: () => {
     Quote.setupEventListeners();
     Quote.populateServiceTypes();
@@ -16,6 +16,36 @@
     document.getElementById('printQuote')?.addEventListener('click', () => window.print());
     const list = document.getElementById('quoteList');
     if (list) list.addEventListener('click', Quote.handleListClick);
+    
+    // Auto-calculate price when inputs change
+    const priceInputs = ['quoteArea', 'quoteAreaUnit', 'quoteBasePrice', 'quotePhotoCount'];
+    priceInputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', () => Quote.calculatePrice());
+        el.addEventListener('change', () => Quote.calculatePrice());
+      }
+    });
+    
+    // Coverage calculator button
+    const calcBtn = document.getElementById('calculateCoverage');
+    if (calcBtn) {
+      calcBtn.addEventListener('click', () => Quote.calculateCoverage());
+    }
+    
+    // Auto-calculate when coverage parameters change
+    const coverageInputs = ['coverageAltitude', 'coverageFrontOverlap', 'coverageSideOverlap'];
+    coverageInputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('change', () => {
+          const area = parseFloat(document.getElementById('quoteArea').value) || 0;
+          if (area > 0) {
+            Quote.calculateCoverage();
+          }
+        });
+      }
+    });
   },
   populateServiceTypes: () => {
     const select = document.getElementById('quoteServiceType');
@@ -45,14 +75,36 @@
     const area = parseFloat(document.getElementById('quoteArea').value) || 0;
     const unit = document.getElementById('quoteAreaUnit').value;
     const basePrice = parseFloat(document.getElementById('quoteBasePrice').value) || 0;
-    let total = 0;
+    const photoCount = parseInt(document.getElementById('quotePhotoCount').value) || 0;
+    
+    let areaCost = 0;
     if (unit === 'acres') {
-      total = area * basePrice;
+      areaCost = area * basePrice;
     } else if (unit === 'sqft') {
-      total = area * CONFIG.pricing.basePricePerSqFt;
+      areaCost = area * (basePrice || CONFIG.pricing.basePricePerSqFt);
     }
+    
+    // Calculate photo processing cost
+    const photoCost = photoCount * CONFIG.pricing.photoProcessingCost * CONFIG.pricing.photoMultiplier;
+    
+    // Total cost
+    let total = areaCost + photoCost;
     if (total < CONFIG.pricing.minimumPrice) total = CONFIG.pricing.minimumPrice;
+    
+    // Update price breakdown display
+    const breakdown = document.getElementById('quotePriceBreakdown');
+    if (breakdown) {
+      document.getElementById('quoteAreaCost').textContent = '$' + areaCost.toFixed(2);
+      document.getElementById('quotePhotoCost').textContent = '$' + photoCost.toFixed(2);
+      document.getElementById('quoteTotalCost').textContent = '$' + total.toFixed(2);
+      breakdown.classList.remove('is-hidden');
+    }
+    
     return total;
+  },
+  
+  calculatePhotoCost: (photoCount, basePrice) => {
+    return photoCount * (basePrice || CONFIG.pricing.photoProcessingCost) * CONFIG.pricing.photoMultiplier;
   },
   createQuote: () => {
     const customerId = document.getElementById('quoteCustomer').value;
@@ -61,6 +113,7 @@
     const area = parseFloat(document.getElementById('quoteArea').value) || 0;
     const areaUnit = document.getElementById('quoteAreaUnit').value;
     const basePrice = parseFloat(document.getElementById('quoteBasePrice').value) || 0;
+    const photoCount = parseInt(document.getElementById('quotePhotoCount').value) || 0;
     const notes = document.getElementById('quoteNotes').value;
     const total = Quote.calculatePrice();
     const service = CONFIG.serviceTypes.find(s => s.id === serviceType);
@@ -72,6 +125,9 @@
       area: area,
       areaUnit: areaUnit,
       basePrice: basePrice,
+      photoCount: photoCount,
+      photoCost: Quote.calculatePhotoCost(photoCount),
+      areaCost: parseFloat(document.getElementById('quoteAreaCost')?.textContent.replace('$', '') || 0),
       total: total,
       notes: notes,
       status: 'draft'
@@ -79,7 +135,85 @@
     Storage.quotes.add(quote);
     Quote.renderList();
     document.getElementById('quoteForm').reset();
+    document.getElementById('quotePriceBreakdown')?.classList.add('is-hidden');
     alert('Quote created successfully!');
+  },
+  
+  calculateCoverage: () => {
+    const area = parseFloat(document.getElementById('quoteArea').value) || 0;
+    const areaUnit = document.getElementById('quoteAreaUnit').value;
+    
+    if (area <= 0) {
+      alert('Please draw an area on the map first or enter an area value.');
+      return;
+    }
+    
+    // Convert area to square meters
+    let areaSqMeters = 0;
+    if (areaUnit === 'acres') {
+      areaSqMeters = area * 4046.86;
+    } else if (areaUnit === 'sqft') {
+      areaSqMeters = area * 0.092903;
+    } else if (areaUnit === 'sqmeters') {
+      areaSqMeters = area;
+    } else if (areaUnit === 'hectares') {
+      areaSqMeters = area * 10000;
+    }
+    
+    // Get coverage parameters
+    const altitude = parseFloat(document.getElementById('coverageAltitude').value) || CONFIG.droneSpecs.defaultAltitude;
+    const frontOverlap = parseFloat(document.getElementById('coverageFrontOverlap').value) || CONFIG.coverageDefaults.frontOverlap;
+    const sideOverlap = parseFloat(document.getElementById('coverageSideOverlap').value) || CONFIG.coverageDefaults.sideOverlap;
+    
+    // Get current drawn area coordinates
+    const drawnLayers = MapManager.drawnItems.getLayers();
+    let areaCoordinates = null;
+    if (drawnLayers.length > 0) {
+      const layer = drawnLayers[drawnLayers.length - 1];
+      areaCoordinates = Measurements.extractCoordinates(layer);
+    }
+    
+    // Calculate coverage
+    const result = CoverageCalculator.calculate(
+      areaCoordinates,
+      areaSqMeters,
+      altitude,
+      frontOverlap,
+      sideOverlap,
+      CONFIG.droneSpecs
+    );
+    
+    if (!result) {
+      alert('Error calculating coverage. Please check your inputs.');
+      return;
+    }
+    
+    // Update UI with results
+    document.getElementById('coveragePhotosNeeded').textContent = result.photos.recommended;
+    document.getElementById('coveragePerPhoto').textContent = 
+      `${result.coverage.widthFeet.toFixed(0)}' × ${result.coverage.heightFeet.toFixed(0)}'`;
+    document.getElementById('coverageGSD').textContent = `${result.gsd.toFixed(2)} cm/pixel`;
+    document.getElementById('coverageFlightTime').textContent = result.flightTime.formatted;
+    if (result.flightPath) {
+      document.getElementById('coverageFlightDistance').textContent = 
+        `${result.flightPath.totalDistanceFeet.toFixed(0)} ft (${result.flightPath.totalDistanceMiles.toFixed(2)} mi)`;
+    } else {
+      document.getElementById('coverageFlightDistance').textContent = 'N/A';
+    }
+    
+    document.getElementById('coverageResults').classList.remove('is-hidden');
+    
+    // Update quote form with photo count
+    document.getElementById('quotePhotoCount').value = result.photos.recommended;
+    Quote.calculatePrice();
+    
+    // Update flight path visualization if available
+    if (result.flightPath && typeof MapManager.updateFlightPath === 'function') {
+      MapManager.updateFlightPath(result.flightPath);
+    }
+    
+    // Update quote form price
+    Quote.calculatePrice();
   },
   renderList: () => {
     const list = document.getElementById('quoteList');

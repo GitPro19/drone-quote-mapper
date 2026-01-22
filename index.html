@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -15,7 +15,7 @@
       <div class="header-actions">
         <button id="exportData" class="btn btn-secondary">Export Data</button>
         <button id="importData" class="btn btn-secondary">Import Data</button>
-        <input type="file" id="importFile" accept=".json" class="is-hidden">
+        <input type="file" id="importFile" accept=".json" class="is-hidden" aria-label="Import data file">
       </div>
     </header>
     <div class="main-content">
@@ -25,16 +25,33 @@
             <button id="drawPolygon" class="btn btn-primary">Polygon</button>
             <button id="drawRectangle" class="btn btn-primary">Rectangle</button>
             <button id="drawCircle" class="btn btn-primary">Circle</button>
+            <button id="drawDistance" class="btn btn-primary">Distance</button>
             <button id="clearDrawings" class="btn btn-warning">Clear</button>
           </div>
           <div class="toolbar-group">
-            <select id="measurementUnit" class="form-select">
+            <label for="measurementUnit" class="is-hidden">Measurement Unit</label>
+            <select id="measurementUnit" class="form-select" aria-label="Measurement Unit">
               <option value="acres">Acres</option>
               <option value="sqft">Square Feet</option>
               <option value="sqmeters">Square Meters</option>
               <option value="hectares">Hectares</option>
             </select>
+            <button id="toggleGrid" class="btn btn-info">Grid</button>
+            <button id="toggleFlightPath" class="btn btn-info">Flight Path</button>
             <button id="toggleSatellite" class="btn btn-info">Satellite</button>
+          </div>
+        </div>
+        <div class="coordinate-input-panel" style="background: #2d2d2d; padding: 0.5rem 1rem; border-bottom: 1px solid #444; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex: 1; min-width: 200px;">
+            <input type="text" id="addressSearch" class="form-input" placeholder="Search address or place..." style="flex: 1; padding: 0.5rem; font-size: 0.9rem;">
+            <button id="searchAddress" class="btn btn-sm btn-primary">Search</button>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <label for="coordinateLat" style="color: #ccc; font-size: 0.85rem;">Lat:</label>
+            <input type="number" id="coordinateLat" class="form-input" step="0.000001" placeholder="Latitude" style="width: 120px; padding: 0.25rem 0.5rem; font-size: 0.85rem;">
+            <label for="coordinateLng" style="color: #ccc; font-size: 0.85rem;">Lng:</label>
+            <input type="number" id="coordinateLng" class="form-input" step="0.000001" placeholder="Longitude" style="width: 120px; padding: 0.25rem 0.5rem; font-size: 0.85rem;">
+            <button id="goToCoordinate" class="btn btn-sm btn-primary">Go To</button>
           </div>
         </div>
         <div id="map" class="map-container"></div>
@@ -76,41 +93,107 @@
         </div>
         <div id="quotesTab" class="tab-content">
           <div class="section">
+            <h3>Coverage Calculator</h3>
+            <div class="coverage-calculator">
+              <div class="form-group">
+                <label for="coverageAltitude">Flight Altitude (meters)</label>
+                <input type="number" id="coverageAltitude" class="form-input" step="1" min="10" max="120" value="60" aria-label="Flight Altitude">
+              </div>
+              <div class="form-group">
+                <label for="coverageFrontOverlap">Front Overlap (%)</label>
+                <input type="number" id="coverageFrontOverlap" class="form-input" step="1" min="0" max="100" value="70" aria-label="Front Overlap">
+              </div>
+              <div class="form-group">
+                <label for="coverageSideOverlap">Side Overlap (%)</label>
+                <input type="number" id="coverageSideOverlap" class="form-input" step="1" min="0" max="100" value="60" aria-label="Side Overlap">
+              </div>
+              <div class="form-group">
+                <label for="coverageTargetGSD" class="tooltip">Target GSD (cm/pixel)
+                  <span class="tooltiptext">Ground Sample Distance - the size of each pixel on the ground</span>
+                </label>
+                <input type="number" id="coverageTargetGSD" class="form-input" step="0.1" min="0.5" max="10" value="2.5" aria-label="Target GSD">
+              </div>
+              <button type="button" id="calculateCoverage" class="btn btn-primary">Calculate Coverage</button>
+              <div id="coverageResults" class="coverage-results is-hidden">
+                <div class="coverage-results-item">
+                  <span>Photos Needed:</span>
+                  <strong id="coveragePhotosNeeded">-</strong>
+                </div>
+                <div class="coverage-results-item">
+                  <span>Coverage per Photo:</span>
+                  <strong id="coveragePerPhoto">-</strong>
+                </div>
+                <div class="coverage-results-item">
+                  <span>GSD:</span>
+                  <strong id="coverageGSD">-</strong>
+                </div>
+                <div class="coverage-results-item">
+                  <span>Estimated Flight Time:</span>
+                  <strong id="coverageFlightTime">-</strong>
+                </div>
+                <div class="coverage-results-item">
+                  <span>Total Flight Distance:</span>
+                  <strong id="coverageFlightDistance">-</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="section">
             <h3>Create Quote</h3>
             <form id="quoteForm" class="quote-form">
               <div class="form-group">
-                <label>Customer</label>
-                <select id="quoteCustomer" class="form-select" required>
+                <label for="quoteCustomer">Customer</label>
+                <select id="quoteCustomer" class="form-select" required aria-label="Customer">
                   <option value="">Select customer...</option>
                 </select>
               </div>
               <div class="form-group">
-                <label>Lot</label>
-                <select id="quoteLot" class="form-select">
+                <label for="quoteLot">Lot</label>
+                <select id="quoteLot" class="form-select" aria-label="Lot">
                   <option value="">Select lot (optional)...</option>
                 </select>
               </div>
               <div class="form-group">
-                <label>Service Type</label>
-                <select id="quoteServiceType" class="form-select" required>
+                <label for="quoteServiceType">Service Type</label>
+                <select id="quoteServiceType" class="form-select" required aria-label="Service Type">
                   <option value="">Select service...</option>
                 </select>
               </div>
               <div class="form-group">
-                <label>Area (from measurements)</label>
-                <input type="number" id="quoteArea" class="form-input" step="0.01" readonly>
-                <select id="quoteAreaUnit" class="form-select">
+                <label for="quoteArea">Area (from measurements)</label>
+                <input type="number" id="quoteArea" class="form-input" step="0.01" readonly aria-label="Area from measurements">
+                <label for="quoteAreaUnit" class="is-hidden">Area Unit</label>
+                <select id="quoteAreaUnit" class="form-select" aria-label="Area Unit">
                   <option value="acres">Acres</option>
                   <option value="sqft">Square Feet</option>
                 </select>
               </div>
               <div class="form-group">
-                <label>Base Price</label>
-                <input type="number" id="quoteBasePrice" class="form-input" step="0.01" required>
+                <label for="quotePhotoCount">Photo Count (auto-calculated)</label>
+                <input type="number" id="quotePhotoCount" class="form-input" step="1" readonly aria-label="Photo Count">
               </div>
               <div class="form-group">
-                <label>Additional Notes</label>
-                <textarea id="quoteNotes" class="form-textarea" rows="3"></textarea>
+                <label for="quoteBasePrice">Base Price per Unit</label>
+                <input type="number" id="quoteBasePrice" class="form-input" step="0.01" required aria-label="Base Price">
+              </div>
+              <div id="quotePriceBreakdown" class="quote-price-breakdown is-hidden">
+                <h4>Price Breakdown</h4>
+                <div class="quote-price-item">
+                  <span>Area Cost:</span>
+                  <span id="quoteAreaCost">$0.00</span>
+                </div>
+                <div class="quote-price-item">
+                  <span>Photo Processing:</span>
+                  <span id="quotePhotoCost">$0.00</span>
+                </div>
+                <div class="quote-price-item">
+                  <span>Total:</span>
+                  <span id="quoteTotalCost">$0.00</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="quoteNotes">Additional Notes</label>
+                <textarea id="quoteNotes" class="form-textarea" rows="3" aria-label="Additional Notes"></textarea>
               </div>
               <button type="submit" class="btn btn-primary">Create Quote</button>
             </form>
@@ -122,29 +205,97 @@
         </div>
         <div id="settingsTab" class="tab-content">
           <div class="section">
-            <h3>Configuration</h3>
+            <h3>Map Configuration</h3>
             <div class="form-group">
-              <label>Default Map Center (Latitude)</label>
-              <input type="number" id="defaultLat" class="form-input" step="0.0001" value="44.8356">
+              <label for="defaultLat">Default Map Center (Latitude)</label>
+              <input type="number" id="defaultLat" class="form-input" step="0.0001" value="44.8356" aria-label="Default Map Center Latitude">
             </div>
             <div class="form-group">
-              <label>Default Map Center (Longitude)</label>
-              <input type="number" id="defaultLng" class="form-input" step="0.0001" value="-69.2733">
+              <label for="defaultLng">Default Map Center (Longitude)</label>
+              <input type="number" id="defaultLng" class="form-input" step="0.0001" value="-69.2733" aria-label="Default Map Center Longitude">
             </div>
             <div class="form-group">
-              <label>Default Zoom Level</label>
-              <input type="number" id="defaultZoom" class="form-input" min="1" max="18" value="13">
+              <label for="defaultZoom">Default Zoom Level</label>
+              <input type="number" id="defaultZoom" class="form-input" min="1" max="18" value="13" aria-label="Default Zoom Level">
             </div>
+          </div>
+          <div class="section">
+            <h3>Company Information</h3>
             <div class="form-group">
-              <label>Company Name</label>
-              <input type="text" id="companyName" class="form-input" placeholder="Your Company Name">
+              <label for="companyName">Company Name</label>
+              <input type="text" id="companyName" class="form-input" placeholder="Your Company Name" aria-label="Company Name">
             </div>
+          </div>
+          <div class="section">
+            <h3>Pricing Configuration</h3>
             <div class="form-group">
               <label>Base Pricing (per acre)</label>
               <input type="number" id="basePricePerAcre" class="form-input" step="0.01" value="250">
             </div>
-            <button id="saveSettings" class="btn btn-primary">Save Settings</button>
+            <div class="form-group">
+              <label>Photo Processing Cost (per photo)</label>
+              <input type="number" id="photoProcessingCost" class="form-input" step="0.01" value="0.50">
+            </div>
+            <div class="form-group">
+              <label>Photo Multiplier</label>
+              <input type="number" id="photoMultiplier" class="form-input" step="0.1" value="1.0">
+            </div>
+            <div class="form-group">
+              <label>Minimum Price</label>
+              <input type="number" id="minimumPrice" class="form-input" step="0.01" value="100">
+            </div>
           </div>
+          <div class="section">
+            <h3>Drone Specifications</h3>
+            <div class="form-group">
+              <label>Drone Model</label>
+              <input type="text" id="droneModel" class="form-input" placeholder="DJI Mini 3" aria-label="Drone Model">
+            </div>
+            <div class="form-group">
+              <label>Sensor Width (mm)</label>
+              <input type="number" id="sensorWidth" class="form-input" step="0.1" value="15.7">
+            </div>
+            <div class="form-group">
+              <label>Sensor Height (mm)</label>
+              <input type="number" id="sensorHeight" class="form-input" step="0.1" value="10.5">
+            </div>
+            <div class="form-group">
+              <label>Focal Length (mm, 35mm equivalent)</label>
+              <input type="number" id="focalLength" class="form-input" step="0.1" value="24">
+            </div>
+            <div class="form-group">
+              <label>Image Width (pixels)</label>
+              <input type="number" id="imageWidth" class="form-input" step="1" value="4000">
+            </div>
+            <div class="form-group">
+              <label>Image Height (pixels)</label>
+              <input type="number" id="imageHeight" class="form-input" step="1" value="3000">
+            </div>
+            <div class="form-group">
+              <label>Max Altitude (meters)</label>
+              <input type="number" id="maxAltitude" class="form-input" step="1" value="120">
+            </div>
+            <div class="form-group">
+              <label>Default Altitude (meters)</label>
+              <input type="number" id="defaultAltitude" class="form-input" step="1" value="60">
+            </div>
+          </div>
+          <div class="section">
+            <h3>Coverage Defaults</h3>
+            <div class="form-group">
+              <label>Default Front Overlap (%)</label>
+              <input type="number" id="defaultFrontOverlap" class="form-input" step="1" min="0" max="100" value="70">
+            </div>
+            <div class="form-group">
+              <label>Default Side Overlap (%)</label>
+              <input type="number" id="defaultSideOverlap" class="form-input" step="1" min="0" max="100" value="60">
+            </div>
+            <div class="form-group">
+              <label>Target GSD (cm/pixel)</label>
+              <input type="number" id="targetGSD" class="form-input" step="0.1" min="0.5" max="10" value="2.5">
+            </div>
+          </div>
+          <button id="saveSettings" class="btn btn-primary">Save Settings</button>
         </div>
       </div>
     </div>
@@ -156,24 +307,24 @@
       <form id="customerForm">
         <input type="hidden" id="customerId">
         <div class="form-group">
-          <label>Name *</label>
-          <input type="text" id="customerName" class="form-input" required>
+          <label for="customerName">Name *</label>
+          <input type="text" id="customerName" class="form-input" required aria-label="Customer Name">
         </div>
         <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="customerEmail" class="form-input">
+          <label for="customerEmail">Email</label>
+          <input type="email" id="customerEmail" class="form-input" aria-label="Customer Email">
         </div>
         <div class="form-group">
-          <label>Phone</label>
-          <input type="tel" id="customerPhone" class="form-input">
+          <label for="customerPhone">Phone</label>
+          <input type="tel" id="customerPhone" class="form-input" aria-label="Customer Phone">
         </div>
         <div class="form-group">
-          <label>Address</label>
-          <input type="text" id="customerAddress" class="form-input">
+          <label for="customerAddress">Address</label>
+          <input type="text" id="customerAddress" class="form-input" aria-label="Customer Address">
         </div>
         <div class="form-group">
-          <label>Notes</label>
-          <textarea id="customerNotes" class="form-textarea" rows="3"></textarea>
+          <label for="customerNotes">Notes</label>
+          <textarea id="customerNotes" class="form-textarea" rows="3" aria-label="Customer Notes"></textarea>
         </div>
         <button type="submit" class="btn btn-primary">Save Customer</button>
       </form>
@@ -187,20 +338,20 @@
         <input type="hidden" id="lotId">
         <input type="hidden" id="lotCustomerId">
         <div class="form-group">
-          <label>Lot Name *</label>
-          <input type="text" id="lotName" class="form-input" required>
+          <label for="lotName">Lot Name *</label>
+          <input type="text" id="lotName" class="form-input" required aria-label="Lot Name">
         </div>
         <div class="form-group">
-          <label>Lot Number</label>
-          <input type="text" id="lotNumber" class="form-input">
+          <label for="lotNumber">Lot Number</label>
+          <input type="text" id="lotNumber" class="form-input" aria-label="Lot Number">
         </div>
         <div class="form-group">
-          <label>Parcel ID</label>
-          <input type="text" id="parcelId" class="form-input">
+          <label for="parcelId">Parcel ID</label>
+          <input type="text" id="parcelId" class="form-input" aria-label="Parcel ID">
         </div>
         <div class="form-group">
-          <label>Notes</label>
-          <textarea id="lotNotes" class="form-textarea" rows="3"></textarea>
+          <label for="lotNotes">Notes</label>
+          <textarea id="lotNotes" class="form-textarea" rows="3" aria-label="Lot Notes"></textarea>
         </div>
         <div class="form-group">
           <label>Save current drawing as lot boundary?</label>
@@ -227,6 +378,7 @@
   <script src="assets/js/utils.js"></script>
   <script src="assets/js/storage.js"></script>
   <script src="assets/js/measurements.js"></script>
+  <script src="assets/js/coverage.js"></script>
   <script src="assets/js/customers.js"></script>
   <script src="assets/js/lotHistory.js"></script>
   <script src="assets/js/quote.js"></script>
