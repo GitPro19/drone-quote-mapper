@@ -1,0 +1,236 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drone Quote Mapper</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>Drone Quote Mapper</h1>
+      <div class="header-actions">
+        <button id="exportData" class="btn btn-secondary">Export Data</button>
+        <button id="importData" class="btn btn-secondary">Import Data</button>
+        <input type="file" id="importFile" accept=".json" class="is-hidden">
+      </div>
+    </header>
+    <div class="main-content">
+      <div class="map-panel">
+        <div class="map-toolbar">
+          <div class="toolbar-group">
+            <button id="drawPolygon" class="btn btn-primary">Polygon</button>
+            <button id="drawRectangle" class="btn btn-primary">Rectangle</button>
+            <button id="drawCircle" class="btn btn-primary">Circle</button>
+            <button id="clearDrawings" class="btn btn-warning">Clear</button>
+          </div>
+          <div class="toolbar-group">
+            <select id="measurementUnit" class="form-select">
+              <option value="acres">Acres</option>
+              <option value="sqft">Square Feet</option>
+              <option value="sqmeters">Square Meters</option>
+              <option value="hectares">Hectares</option>
+            </select>
+            <button id="toggleSatellite" class="btn btn-info">Satellite</button>
+          </div>
+        </div>
+        <div id="map" class="map-container"></div>
+        <div class="map-info">
+          <div id="currentMeasurement" class="measurement-display"></div>
+        </div>
+      </div>
+      <div class="control-panel">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="customers">Customers & Lots</button>
+          <button class="tab-btn" data-tab="quotes">Quotes</button>
+          <button class="tab-btn" data-tab="settings">Settings</button>
+        </div>
+        <div id="customersTab" class="tab-content active">
+          <div class="section">
+            <h3>Customer Management</h3>
+            <div class="search-box">
+              <input type="text" id="customerSearch" class="form-input" placeholder="Search customers...">
+              <button id="newCustomer" class="btn btn-primary">+ New Customer</button>
+            </div>
+            <div id="customerList" class="customer-list"></div>
+          </div>
+          <div class="section is-hidden" id="lotSection">
+            <h3>Lot Management</h3>
+            <div class="lot-info">
+              <div id="selectedCustomerInfo"></div>
+              <button id="newLot" class="btn btn-primary">+ New Lot</button>
+            </div>
+            <div id="lotList" class="lot-list"></div>
+          </div>
+          <div class="section is-hidden" id="lotVersionSection">
+            <h3>Lot Versions</h3>
+            <div id="lotVersionList" class="version-list"></div>
+            <div id="lotComparison" class="lot-comparison is-hidden">
+              <h4>Change Comparison</h4>
+              <div id="comparisonMetrics"></div>
+            </div>
+          </div>
+        </div>
+        <div id="quotesTab" class="tab-content">
+          <div class="section">
+            <h3>Create Quote</h3>
+            <form id="quoteForm" class="quote-form">
+              <div class="form-group">
+                <label>Customer</label>
+                <select id="quoteCustomer" class="form-select" required>
+                  <option value="">Select customer...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Lot</label>
+                <select id="quoteLot" class="form-select">
+                  <option value="">Select lot (optional)...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Service Type</label>
+                <select id="quoteServiceType" class="form-select" required>
+                  <option value="">Select service...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Area (from measurements)</label>
+                <input type="number" id="quoteArea" class="form-input" step="0.01" readonly>
+                <select id="quoteAreaUnit" class="form-select">
+                  <option value="acres">Acres</option>
+                  <option value="sqft">Square Feet</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Base Price</label>
+                <input type="number" id="quoteBasePrice" class="form-input" step="0.01" required>
+              </div>
+              <div class="form-group">
+                <label>Additional Notes</label>
+                <textarea id="quoteNotes" class="form-textarea" rows="3"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary">Create Quote</button>
+            </form>
+          </div>
+          <div class="section">
+            <h3>Saved Quotes</h3>
+            <div id="quoteList" class="quote-list"></div>
+          </div>
+        </div>
+        <div id="settingsTab" class="tab-content">
+          <div class="section">
+            <h3>Configuration</h3>
+            <div class="form-group">
+              <label>Default Map Center (Latitude)</label>
+              <input type="number" id="defaultLat" class="form-input" step="0.0001" value="44.8356">
+            </div>
+            <div class="form-group">
+              <label>Default Map Center (Longitude)</label>
+              <input type="number" id="defaultLng" class="form-input" step="0.0001" value="-69.2733">
+            </div>
+            <div class="form-group">
+              <label>Default Zoom Level</label>
+              <input type="number" id="defaultZoom" class="form-input" min="1" max="18" value="13">
+            </div>
+            <div class="form-group">
+              <label>Company Name</label>
+              <input type="text" id="companyName" class="form-input" placeholder="Your Company Name">
+            </div>
+            <div class="form-group">
+              <label>Base Pricing (per acre)</label>
+              <input type="number" id="basePricePerAcre" class="form-input" step="0.01" value="250">
+            </div>
+            <button id="saveSettings" class="btn btn-primary">Save Settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="customerModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2 id="customerModalTitle">New Customer</h2>
+      <form id="customerForm">
+        <input type="hidden" id="customerId">
+        <div class="form-group">
+          <label>Name *</label>
+          <input type="text" id="customerName" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="customerEmail" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="tel" id="customerPhone" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Address</label>
+          <input type="text" id="customerAddress" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="customerNotes" class="form-textarea" rows="3"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Customer</button>
+      </form>
+    </div>
+  </div>
+  <div id="lotModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2 id="lotModalTitle">New Lot</h2>
+      <form id="lotForm">
+        <input type="hidden" id="lotId">
+        <input type="hidden" id="lotCustomerId">
+        <div class="form-group">
+          <label>Lot Name *</label>
+          <input type="text" id="lotName" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label>Lot Number</label>
+          <input type="text" id="lotNumber" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Parcel ID</label>
+          <input type="text" id="parcelId" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="lotNotes" class="form-textarea" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Save current drawing as lot boundary?</label>
+          <button type="button" id="saveCurrentDrawing" class="btn btn-info">Save Current Drawing</button>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Lot</button>
+      </form>
+    </div>
+  </div>
+  <div id="quotePreviewModal" class="modal">
+    <div class="modal-content large">
+      <span class="close">&times;</span>
+      <div id="quotePreview"></div>
+      <div class="modal-actions">
+        <button id="exportQuote" class="btn btn-primary">Export Quote</button>
+        <button id="printQuote" class="btn btn-secondary">Print</button>
+      </div>
+    </div>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="config.js"></script>
+  <script src="assets/js/utils.js"></script>
+  <script src="assets/js/storage.js"></script>
+  <script src="assets/js/measurements.js"></script>
+  <script src="assets/js/customers.js"></script>
+  <script src="assets/js/lotHistory.js"></script>
+  <script src="assets/js/quote.js"></script>
+  <script src="assets/js/map.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
