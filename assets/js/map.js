@@ -22,17 +22,33 @@ const MapManager = {
   currentAreaPolygon: null,
 
   init: () => {
+    // Prevent multiple initializations (race condition fix)
+    if (MapManager._initializing || MapManager.map) {
+      return;
+    }
+    MapManager._initializing = true;
+    
+    // Clear any existing timeout to prevent race conditions
+    if (MapManager._initTimeoutId) {
+      clearTimeout(MapManager._initTimeoutId);
+    }
+    
     // Delay slightly to ensure DOM is fully ready
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       MapManager.createMap();
-      if (!MapManager.map) return;
+      if (!MapManager.map) {
+        MapManager._initializing = false;
+        return;
+      }
       MapManager.setupPlotting();
       MapManager.setupEventListeners();
       MapManager.setupCoordinateDisplay();
       if (typeof LandPlotting !== 'undefined' && LandPlotting.updateWorkflowSteps) {
         LandPlotting.updateWorkflowSteps();
       }
+      MapManager._initializing = false;
     }, 50);
+    MapManager._initTimeoutId = timeoutId;
   },
 
   createMap: () => {
@@ -144,6 +160,12 @@ const MapManager = {
   },
 
   setupEventListeners: () => {
+    // Prevent duplicate event listeners (memory leak fix)
+    if (MapManager._listenersSetup) {
+      return;
+    }
+    MapManager._listenersSetup = true;
+    
     // Plotting buttons
     const startBtn = document.getElementById('startPlotting');
     const finishBtn = document.getElementById('finishPlotting');
@@ -288,18 +310,19 @@ const MapManager = {
   },
 
   toggleSatellite: () => {
+    const toggleBtn = document.getElementById('toggleSatellite');
     if (MapManager.isSatellite) {
       MapManager.map.removeLayer(MapManager.satelliteLayer);
       MapManager.streetLayer.addTo(MapManager.map);
       MapManager.currentLayer = MapManager.streetLayer;
       MapManager.isSatellite = false;
-      document.getElementById('toggleSatellite').textContent = 'Satellite';
+      if (toggleBtn) toggleBtn.textContent = 'Satellite';
     } else {
       MapManager.map.removeLayer(MapManager.streetLayer);
       MapManager.satelliteLayer.addTo(MapManager.map);
       MapManager.currentLayer = MapManager.satelliteLayer;
       MapManager.isSatellite = true;
-      document.getElementById('toggleSatellite').textContent = 'Map';
+      if (toggleBtn) toggleBtn.textContent = 'Map';
     }
     // Keep labels layer visible
     if (!MapManager.map.hasLayer(MapManager.labelsLayer)) {
@@ -311,12 +334,25 @@ const MapManager = {
     MapManager.updateAllMeasurements();
   },
 
+  _measurementDebounceTimer: null,
+  
   updateAllMeasurements: () => {
+    if (typeof LandPlotting === 'undefined') return;
+    
+    // Debounce measurement updates for performance
+    clearTimeout(MapManager._measurementDebounceTimer);
+    MapManager._measurementDebounceTimer = setTimeout(() => {
+      MapManager._updateAllMeasurementsImmediate();
+    }, 150);
+  },
+  
+  _updateAllMeasurementsImmediate: () => {
     if (typeof LandPlotting === 'undefined') return;
     
     const latestPlot = LandPlotting.getLatestPlot?.();
     const currentPlot = LandPlotting.getCurrentPlot();
-    const unit = document.getElementById('measurementUnit')?.value || 'acres';
+    const unitEl = document.getElementById('measurementUnit');
+    const unit = unitEl?.value || 'acres';
     
     const hasCurrentArea = LandPlotting.isPlotting && currentPlot && currentPlot.area;
     const hasLatestArea = !LandPlotting.isPlotting && latestPlot && latestPlot.area;
@@ -369,8 +405,8 @@ const MapManager = {
       // Update quote form if it exists
       const quoteArea = document.getElementById('quoteArea');
       const quoteAreaUnit = document.getElementById('quoteAreaUnit');
-      if (quoteArea) quoteArea.value = areaValue;
-      if (quoteAreaUnit) quoteAreaUnit.value = unit;
+      if (quoteArea && quoteArea.value !== String(areaValue)) quoteArea.value = areaValue;
+      if (quoteAreaUnit && quoteAreaUnit.value !== unit) quoteAreaUnit.value = unit;
       
       // Auto-trigger coverage calculation and quote update
       if (typeof CoverageCalculator !== 'undefined' && (hasCurrentArea || hasLatestArea)) {
@@ -413,7 +449,8 @@ const MapManager = {
     // Auto-calculate coverage when area is updated
     if (typeof CoverageCalculator === 'undefined') return;
     
-    const areaValue = parseFloat(document.getElementById('quoteArea')?.value) || 0;
+    const areaValueRaw = document.getElementById('quoteArea')?.value;
+    const areaValue = parseFloat(areaValueRaw) || 0;
     const areaUnit = document.getElementById('quoteAreaUnit')?.value || 'acres';
     
     if (areaValue <= 0) return;
@@ -435,9 +472,12 @@ const MapManager = {
     const frontOverlapEl = document.getElementById('coverageFrontOverlap');
     const sideOverlapEl = document.getElementById('coverageSideOverlap');
     
-    const altitude = altitudeEl ? parseFloat(altitudeEl.value) : (CONFIG.droneSpecs?.defaultAltitude || 60);
-    const frontOverlap = frontOverlapEl ? parseFloat(frontOverlapEl.value) : (CONFIG.coverageDefaults?.frontOverlap || 70);
-    const sideOverlap = sideOverlapEl ? parseFloat(sideOverlapEl.value) : (CONFIG.coverageDefaults?.sideOverlap || 60);
+    const altitudeRaw = altitudeEl?.value;
+    const altitude = altitudeEl ? parseFloat(altitudeRaw) : (CONFIG.droneSpecs?.defaultAltitude || 60);
+    const frontOverlapRaw = frontOverlapEl?.value;
+    const frontOverlap = frontOverlapEl ? parseFloat(frontOverlapRaw) : (CONFIG.coverageDefaults?.frontOverlap || 70);
+    const sideOverlapRaw = sideOverlapEl?.value;
+    const sideOverlap = sideOverlapEl ? parseFloat(sideOverlapRaw) : (CONFIG.coverageDefaults?.sideOverlap || 60);
     const packageOptions = (typeof Quote !== 'undefined' && Quote.getSelectedPackageOptions)
       ? Quote.getSelectedPackageOptions()
       : {};
@@ -598,6 +638,51 @@ const MapManager = {
         pane: 'flightPath'
       });
       MapManager.flightPathLayer.addLayer(orbitLine);
+      
+      // Draw angle indicators for building shots
+      if (orbit.shotDetails && Array.isArray(orbit.shotDetails)) {
+        orbit.shotDetails.forEach((shot, index) => {
+          if (!shot.position || !orbit.center) return;
+          
+          // Draw line from shot position to building center
+          const angleLine = L.polyline([
+            [shot.position.lat, shot.position.lng],
+            [orbit.center.lat, orbit.center.lng]
+          ], {
+            color: '#ef4444',
+            weight: 1.5,
+            opacity: 0.5,
+            dashArray: '2 4',
+            pane: 'flightPath'
+          });
+          MapManager.flightPathLayer.addLayer(angleLine);
+          
+          // Add angle marker with tooltip
+          const angleMarker = L.marker([shot.position.lat, shot.position.lng], {
+            icon: L.divIcon({
+              className: 'angle-marker',
+              html: `<div class="angle-marker-inner" title="Angle: ${shot.angle.pitch.toFixed(1)}°">${shot.angle.pitch.toFixed(0)}°</div>`,
+              iconSize: [24, 24],
+              iconAnchor: [12, 12]
+            }),
+            pane: 'flightPath'
+          });
+          
+          // Create detailed tooltip
+          const tooltipContent = `
+            <div class="shot-prediction-tooltip">
+              <strong>${orbit.name || orbit.type}</strong><br>
+              Camera Angle: ${shot.angle.pitch.toFixed(1)}° from horizontal<br>
+              Distance: ${shot.fieldOfView.distanceFeet.toFixed(0)} ft<br>
+              Bearing: ${shot.compassBearing.toFixed(0)}°<br>
+              FOV: ${shot.fieldOfView.widthFeet.toFixed(0)}' × ${shot.fieldOfView.heightFeet.toFixed(0)}'<br>
+              ${shot.willCapture.buildingVisible ? '✓ Building visible' : '✗ Building not visible'}
+            </div>
+          `;
+          angleMarker.bindTooltip(tooltipContent, { permanent: false, direction: 'top' });
+          MapManager.flightPathLayer.addLayer(angleMarker);
+        });
+      }
     });
     
     MapManager.map.addLayer(MapManager.flightPathLayer);

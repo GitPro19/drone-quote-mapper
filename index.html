@@ -17,7 +17,6 @@
       <div class="map-area">
         <!-- Floating Action Button -->
         <div class="floating-controls">
-          <button id="finishPlotting" class="fab btn-success is-hidden">Finish Mapping</button>
           <button id="cancelPlotting" class="fab btn-warning is-hidden">Start Over</button>
         </div>
         
@@ -40,6 +39,9 @@
             <button id="toggleSatellite" class="btn btn-sm btn-info">Satellite</button>
             <button id="clearAllPlots" class="btn btn-sm btn-warning">Clear All</button>
           </div>
+          <div class="map-controls-group">
+            <button id="finishPlotting" class="btn btn-submit is-hidden">Finish Mapping</button>
+          </div>
         </div>
         
         <div id="map" class="map-container"></div>
@@ -52,6 +54,12 @@
         </div>
       </div>
       <div class="workflow-panel">
+        <!-- Step Navigation -->
+        <div class="step-navigation">
+          <button id="prevStep" class="btn btn-secondary btn-nav" disabled>← Previous</button>
+          <button id="nextStep" class="btn btn-primary btn-nav" disabled>Next →</button>
+        </div>
+        
         <!-- Step 1: Map Your Property -->
         <div class="workflow-step active" id="workflowStep1">
           <div class="step-header">
@@ -129,12 +137,22 @@
                 <li>Pick a package to control drone photo count.</li>
                 <li>If the area looks off, go back and Readjust Boundary.</li>
                 <li>Most drone shots are angled; only the top-down shots show on the map.</li>
+                <li>Hover over angle markers (red circles) on building orbits to see shot predictions and camera angles.</li>
               </ul>
+              <div class="shot-prediction-info is-hidden" id="shotPredictionInfo">
+                <h4>📸 Shot Predictions & Camera Angles</h4>
+                <p class="help-text" style="margin-bottom: 1rem;">Detailed predictions of what will be captured from each shot position, including camera angles, distances, and field of view measurements.</p>
+                <div id="shotPredictionDetails"></div>
+              </div>
               <div class="form-group">
-                <label for="quotePackage">Drone Photo Package</label>
-                <select id="quotePackage" class="form-select" aria-label="Drone Photo Package"></select>
-                <p class="help-text" id="quotePackageHint"></p>
+                <label for="quotePackage" style="font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; display: block;">Choose Your Drone Photo Package</label>
+                <div class="package-selector" id="packageSelector">
+                  <!-- Packages will be dynamically inserted here -->
+                </div>
+                <input type="hidden" id="quotePackage" value="">
+                <p class="help-text" id="quotePackageHint" style="margin-top: 1rem;"></p>
                 <div class="package-summary is-hidden" id="quotePackageSummary">
+                  <h4 style="margin-bottom: 0.75rem; color: var(--primary);">Package Details</h4>
                   <div class="package-summary-item">
                     <span>Property shots:</span>
                     <strong id="quotePackageLandCount">-</strong>
@@ -193,11 +211,11 @@
                     <span id="quotePhotoCountDisplay">-</span>
                   </div>
                   <div class="quote-price-item">
-                    <span>Area Cost:</span>
+                    <span>Area Scaling:</span>
                     <span id="quoteAreaCost">$0.00</span>
                   </div>
                   <div class="quote-price-item">
-                    <span>Drone Photo Processing:</span>
+                    <span>Additional Photo Processing:</span>
                     <span id="quotePhotoCost">$0.00</span>
                   </div>
                   <div class="quote-price-item">

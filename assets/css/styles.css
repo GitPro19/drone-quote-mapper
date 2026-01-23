@@ -177,12 +177,25 @@ html, body {
   box-shadow: var(--shadow-md);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.map-controls.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
 }
 
 .map-controls-group {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.map-controls-group:last-child {
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
 }
 
 .start-mapping-btn {
@@ -254,6 +267,30 @@ html, body {
   flex-direction: column;
   overflow-y: auto;
   border-left: 1px solid var(--border);
+}
+
+/* Step Navigation */
+.step-navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.btn-nav {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+}
+
+.btn-nav:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .workflow-step {
@@ -477,6 +514,26 @@ html, body {
   background: #2563eb;
 }
 
+.btn-submit {
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+}
+
+.btn-submit:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
 .btn-sm {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
@@ -607,12 +664,130 @@ html, body {
   padding-top: 0.75rem;
 }
 
+/* Package Selector */
+.package-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.package-card {
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.package-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(16, 185, 129, 0.2);
+}
+
+.package-card.selected {
+  border-color: var(--primary);
+  background: rgba(16, 185, 129, 0.1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.package-card.popular::before {
+  content: 'Most Popular';
+  position: absolute;
+  top: -10px;
+  right: 10px;
+  background: var(--primary);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.package-card-header {
+  margin-bottom: 1rem;
+}
+
+.package-card-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.package-card-price {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+
+.package-card-price .price-label {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+  font-weight: 400;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.package-card-description {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.package-card-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+  flex-grow: 1;
+}
+
+.package-card-features li {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+  padding: 0.35rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.package-card-features li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.package-card-best-for {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
 .package-summary {
   background: var(--bg-secondary);
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.75rem;
-  margin-top: 0.5rem;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.package-summary h4 {
+  color: var(--text-primary);
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .package-summary-item {
@@ -621,6 +796,12 @@ html, body {
   align-items: center;
   color: var(--text-secondary);
   font-size: 0.9rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.package-summary-item:last-child {
+  border-bottom: none;
 }
 
 .package-summary-item strong {
@@ -628,13 +809,15 @@ html, body {
 }
 
 .package-summary-item.total {
-  margin-top: 0.35rem;
-  padding-top: 0.35rem;
-  border-top: 1px dashed var(--border);
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 2px solid var(--border);
+  font-size: 1rem;
 }
 
 .package-summary-item.total strong {
   color: var(--primary);
+  font-size: 1.1rem;
 }
 
 /* Plotting Markers */
@@ -713,6 +896,134 @@ html, body {
 .obstacle-marker-inner.obstacle-marker-shed { background: #3b82f6; }
 .obstacle-marker-inner.obstacle-marker-barn { background: #8b5cf6; }
 .obstacle-marker-inner.obstacle-marker-dock { background: #14b8a6; }
+
+/* Angle Markers */
+.angle-marker {
+  cursor: help;
+}
+
+.angle-marker-inner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  border: 2px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 0.7rem;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.2s;
+}
+
+.angle-marker:hover .angle-marker-inner {
+  transform: scale(1.2);
+  background: #ef4444;
+}
+
+.shot-prediction-tooltip {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.shot-prediction-tooltip strong {
+  color: var(--primary);
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+/* Shot Prediction Info Panel */
+.shot-prediction-info {
+  background: var(--bg-card);
+  padding: 1.25rem;
+  border-radius: var(--radius);
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+}
+
+.shot-prediction-info h4 {
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.shot-prediction-info .shot-building {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.shot-prediction-info .shot-building:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.shot-prediction-info .shot-building-header {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.shot-prediction-info .shot-building-meta {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.shot-prediction-info .shot-item {
+  margin-left: 1rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--primary);
+}
+
+.shot-prediction-info .shot-item-header {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.shot-prediction-info .shot-item-detail {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.8;
+  margin: 0.25rem 0;
+}
+
+.shot-prediction-info .shot-item-detail strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.shot-prediction-info .shot-item-detail .angle-badge {
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.8rem;
+  margin-left: 0.25rem;
+}
+
+.shot-prediction-info .shot-item-detail .success-badge {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.shot-prediction-info .shot-item-detail .warning-badge {
+  color: var(--warning);
+  font-weight: 600;
+}
 
 /* Additional Tabs */
 .additional-tabs {
@@ -968,6 +1279,14 @@ html, body {
   
   .measurement-value {
     font-size: 1.5rem;
+  }
+  
+  .package-selector {
+    grid-template-columns: 1fr;
+  }
+  
+  .package-card {
+    max-width: 100%;
   }
 }
 

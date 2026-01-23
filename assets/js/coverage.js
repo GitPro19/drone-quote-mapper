@@ -1,4 +1,91 @@
 const CoverageCalculator = {
+  // Calculate camera angle (pitch) for building shots
+  calculateCameraAngle: (altitude, groundDistance, buildingHeight = 0) => {
+    // Calculate the angle from horizontal (0° = horizontal, 90° = straight down)
+    // For building shots, we want oblique angles (typically 30-60° from horizontal)
+    // groundDistance is the horizontal distance from drone to building
+    const totalHeight = altitude + (buildingHeight || 0);
+    const angleRad = Math.atan2(totalHeight, groundDistance);
+    const angleDeg = (angleRad * 180) / Math.PI;
+    return {
+      degrees: angleDeg,
+      radians: angleRad,
+      pitch: 90 - angleDeg, // Camera pitch (0° = horizontal, 90° = straight down)
+      horizontalDistance: groundDistance
+    };
+  },
+
+  // Calculate field of view coverage from a shot position
+  calculateFieldOfView: (shotLat, shotLng, targetLat, targetLng, altitude, cameraAngle, sensorWidth, focalLength) => {
+    // Calculate what area will be visible in the frame
+    const distance = Measurements.calculateDistance([shotLat, shotLng], [targetLat, targetLng]);
+    const groundDistance = distance.meters;
+    
+    // Calculate FOV based on camera specs
+    // For oblique shots, the effective altitude is the distance to the target
+    const effectiveDistance = Math.sqrt(groundDistance * groundDistance + altitude * altitude);
+    const fovWidth = (sensorWidth / focalLength) * effectiveDistance;
+    const fovHeight = fovWidth * 0.75; // Assuming 4:3 aspect ratio
+    
+    // Adjust for camera angle (oblique shots see more area on ground)
+    // When camera is angled, the ground coverage increases
+    const angleRad = (cameraAngle * Math.PI) / 180;
+    const adjustedWidth = fovWidth / Math.cos(angleRad);
+    const adjustedHeight = fovHeight / Math.cos(angleRad);
+    
+    return {
+      width: adjustedWidth,
+      height: adjustedHeight,
+      widthFeet: adjustedWidth * 3.28084,
+      heightFeet: adjustedHeight * 3.28084,
+      distance: groundDistance,
+      distanceFeet: distance.feet,
+      effectiveDistance: effectiveDistance
+    };
+  },
+
+  // Get compass direction from bearing
+  getBearingDirection: (bearing) => {
+    const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+    const index = Math.round(bearing / 22.5) % 16;
+    return directions[index];
+  },
+
+  // Predict what will be visible from a shot position
+  predictShotCoverage: (shotPosition, targetPosition, altitude, buildingHeight = 0, droneSpecs) => {
+    const distance = Measurements.calculateDistance(
+      [shotPosition.lat, shotPosition.lng],
+      [targetPosition.lat, targetPosition.lng]
+    );
+    
+    // Ground distance is the horizontal distance (for angle calculation)
+    const groundDistance = distance.meters;
+    
+    const angle = CoverageCalculator.calculateCameraAngle(altitude, groundDistance, buildingHeight);
+    const fov = CoverageCalculator.calculateFieldOfView(
+      shotPosition.lat, shotPosition.lng,
+      targetPosition.lat, targetPosition.lng,
+      altitude,
+      angle.pitch,
+      droneSpecs.sensorWidth,
+      droneSpecs.focalLength
+    );
+    
+    return {
+      position: shotPosition,
+      target: targetPosition,
+      altitude,
+      distance: distance,
+      angle: angle,
+      fieldOfView: fov,
+      willCapture: {
+        buildingVisible: angle.pitch < 75, // Building visible if angle is less than 75° from horizontal
+        groundVisible: true,
+        coverageArea: fov.width * fov.height
+      }
+    };
+  },
+
   pickEvenIndices: (total, count) => {
     if (count <= 0 || total <= 0) return [];
     if (count >= total) return Array.from({ length: total }, (_, i) => i);
@@ -20,13 +107,29 @@ const CoverageCalculator = {
 
   calculateGSD: (altitude, focalLength, sensorHeight, imageHeight) => {
     // GSD (cm/pixel) = (sensor height (mm) / focal length (mm)) * altitude (m) * 100 / image height (pixels)
+    // Guard against division by zero
+    if (!focalLength || focalLength === 0 || !imageHeight || imageHeight === 0) {
+      return 0;
+    }
     const gsd = (sensorHeight / focalLength) * altitude * 100 / imageHeight;
-    return gsd;
+    return Number.isFinite(gsd) ? gsd : 0;
   },
 
   calculatePhotoCoverage: (altitude, focalLength, sensorWidth, sensorHeight, imageWidth, imageHeight) => {
     // Ground coverage width (m) = (sensor width (mm) / focal length (mm)) * altitude (m)
     // Ground coverage height (m) = (sensor height (mm) / focal length (mm)) * altitude (m)
+    // Guard against division by zero
+    if (!focalLength || focalLength === 0) {
+      return {
+        width: 0,
+        height: 0,
+        area: 0,
+        widthFeet: 0,
+        heightFeet: 0,
+        areaSqFt: 0,
+        areaAcres: 0
+      };
+    }
     const coverageWidth = (sensorWidth / focalLength) * altitude;
     const coverageHeight = (sensorHeight / focalLength) * altitude;
     
@@ -61,6 +164,16 @@ const CoverageCalculator = {
     
     // Estimate based on effective coverage per photo (accounting for overlap)
     const effectiveCoveragePerPhoto = spacing.front * spacing.side; // square meters
+    
+    // Guard against division by zero
+    if (!effectiveCoveragePerPhoto || effectiveCoveragePerPhoto <= 0 || !Number.isFinite(effectiveCoveragePerPhoto)) {
+      return {
+        minimum: 0,
+        recommended: 0,
+        effectiveCoveragePerPhoto: 0
+      };
+    }
+    
     const photosNeeded = Math.ceil(areaSqMeters / effectiveCoveragePerPhoto);
     
     // Add buffer for edge cases and turns
@@ -184,12 +297,34 @@ const CoverageCalculator = {
         .map(line => line.filter(point => selectedIds.has(point.id)).map(point => [point.lat, point.lng]))
         .filter(line => line.length >= 2);
 
-      const shotPoints = selectedPoints.map(point => ({ lat: point.lat, lng: point.lng, type: 'angled' }));
+      // Add angle predictions for property shots
+      const altitude = options.altitude || CONFIG.droneSpecs?.defaultAltitude || 60;
+      const shotPoints = selectedPoints.map(point => {
+        const shot = { lat: point.lat, lng: point.lng, type: 'angled' };
+        
+        // Calculate approximate angle for property shots (typically 45-60° for good coverage)
+        // For top-down shots, angle is 90° (straight down)
+        // For angled shots, calculate based on typical oblique photography
+        const typicalAngle = 50; // Typical oblique angle for property photography
+        shot.cameraAngle = {
+          pitch: typicalAngle,
+          degrees: typicalAngle,
+          description: 'Oblique (angled)'
+        };
+        
+        return shot;
+      });
+      
       const topDownCount = Math.min(targetTopDown, shotPoints.length);
       const topDownIndices = CoverageCalculator.pickEvenIndices(shotPoints.length, topDownCount);
       topDownIndices.forEach(index => {
         if (shotPoints[index]) {
           shotPoints[index].type = 'top-down';
+          shotPoints[index].cameraAngle = {
+            pitch: 90,
+            degrees: 90,
+            description: 'Nadir (straight down)'
+          };
         }
       });
       const angledCount = shotPoints.length - topDownCount;
@@ -213,7 +348,18 @@ const CoverageCalculator = {
         totalPhotos: shotPoints.length,
         totalDistance: totalDistance,
         totalDistanceFeet: totalDistance * 3.28084,
-        totalDistanceMiles: totalDistance * 0.000621371
+        totalDistanceMiles: totalDistance * 0.000621371,
+        altitude: altitude,
+        shotPredictions: {
+          totalShots: shotPoints.length,
+          topDownShots: topDownCount,
+          angledShots: angledCount,
+          typicalAngles: {
+            topDown: 90,
+            angled: 50,
+            building: 30
+          }
+        }
       };
     } catch (e) {
       console.error('Flight path calculation error:', e);

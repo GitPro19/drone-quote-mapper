@@ -18,9 +18,43 @@ const CONFIG = {
     photoMultiplier: 1.0
   },
   photoPackages: [
-    { id: 'economy', name: 'Economy', description: 'Fewer photos, faster turnaround.', landPhotos: 15, topDownShots: 2, spacingMultiplier: 1.4, altitudeMultiplier: 1.3 },
-    { id: 'standard', name: 'Standard', description: 'Balanced coverage for most properties.', landPhotos: 30, topDownShots: 3, spacingMultiplier: 1.0, altitudeMultiplier: 1.0 },
-    { id: 'premium', name: 'Premium', description: 'Maximum detail with multiple angles.', landPhotos: 50, topDownShots: 4, spacingMultiplier: 0.85, altitudeMultiplier: 0.9 }
+    { 
+      id: 'economy', 
+      name: 'Economy', 
+      description: 'Perfect for small properties and quick turnarounds.', 
+      landPhotos: 15, 
+      topDownShots: 2, 
+      spacingMultiplier: 1.4, 
+      altitudeMultiplier: 1.3,
+      basePrice: 199,
+      includes: ['10-15 edited aerial photos', 'Basic editing', 'Standard turnaround (3-5 days)', 'Digital delivery'],
+      bestFor: 'Small residential properties, quick listings'
+    },
+    { 
+      id: 'standard', 
+      name: 'Standard', 
+      description: 'Most popular choice for medium to large properties.', 
+      landPhotos: 30, 
+      topDownShots: 3, 
+      spacingMultiplier: 1.0, 
+      altitudeMultiplier: 1.0,
+      basePrice: 449,
+      includes: ['20-30 edited aerial photos', '30-60 second video compilation', 'Professional editing', 'Priority turnaround (2-3 days)', 'Digital delivery + social media formats'],
+      bestFor: 'Medium properties, real estate listings, commercial properties',
+      popular: true
+    },
+    { 
+      id: 'premium', 
+      name: 'Premium', 
+      description: 'Maximum coverage with extended video and mapping.', 
+      landPhotos: 50, 
+      topDownShots: 4, 
+      spacingMultiplier: 0.85, 
+      altitudeMultiplier: 0.9,
+      basePrice: 849,
+      includes: ['30-50 edited aerial photos', '2-3 minute extended video', 'Premium color grading', '2D property map', 'Same-day or next-day turnaround', 'All digital formats + print-ready files', '360° aerial panoramas (optional)'],
+      bestFor: 'Large properties, luxury listings, commercial/industrial, marketing materials'
+    }
   ],
   defaultPackageId: 'standard',
   buildingShotCounts: {

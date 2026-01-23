@@ -11,12 +11,36 @@ const LandPlotting = {
 
   init: () => {
     LandPlotting.loadPlots();
+    LandPlotting.setupStepNavigation();
     LandPlotting.updateWorkflowSteps();
     
     // Display existing plots on map
     if (typeof MapManager !== 'undefined' && MapManager.map) {
       LandPlotting.getAllPlots().forEach(plot => {
         MapManager.displayPlot(plot);
+      });
+    }
+  },
+
+  setupStepNavigation: () => {
+    const prevBtn = document.getElementById('prevStep');
+    const nextBtn = document.getElementById('nextStep');
+    
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => {
+        const currentStep = LandPlotting.getCurrentStep();
+        if (currentStep > 1) {
+          LandPlotting.goToStep(currentStep - 1);
+        }
+      });
+    }
+    
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        const currentStep = LandPlotting.getCurrentStep();
+        if (currentStep < 3) {
+          LandPlotting.goToStep(currentStep + 1);
+        }
       });
     }
   },
@@ -174,8 +198,12 @@ const LandPlotting = {
       Quote.updateQuoteDisplay();
     }
     
-    // Show obstacle marking option
+    // Show obstacle marking option and auto-advance to step 2
     LandPlotting.showObstacleOption();
+    // Auto-advance to step 2 after finishing plot
+    setTimeout(() => {
+      LandPlotting.goToStep(2);
+    }, 100);
   },
 
   cancelPlotting: () => {
@@ -245,19 +273,54 @@ const LandPlotting = {
 
   getBuildingOrbits: (plot) => {
     if (!plot || !plot.obstacles) return [];
+    const altitude = CONFIG.droneSpecs?.defaultAltitude || 60;
+    const buildingHeights = {
+      house: 6, // meters, typical single-story
+      garage: 3,
+      shed: 2.5,
+      barn: 5,
+      dock: 1,
+      default: 4
+    };
+    
     return plot.obstacles.map(obs => {
       const shots = LandPlotting.getBuildingShotCountForType(obs.type);
       const radius = LandPlotting.getBuildingShotRadiusForType(obs.type);
+      const buildingHeight = buildingHeights[obs.type?.toLowerCase()] || buildingHeights.default;
       const points = [];
+      const shotDetails = [];
       const latRad = (obs.position.lat * Math.PI) / 180;
       const latOffset = radius / 111320;
       const lngOffset = radius / (111320 * Math.cos(latRad));
+      
       for (let i = 0; i < shots; i++) {
         const angle = (i / shots) * Math.PI * 2;
         const lat = obs.position.lat + (latOffset * Math.cos(angle));
         const lng = obs.position.lng + (lngOffset * Math.sin(angle));
-        points.push([lat, lng]);
+        const point = [lat, lng];
+        points.push(point);
+        
+        // Calculate shot predictions
+        if (typeof CoverageCalculator !== 'undefined' && CoverageCalculator.predictShotCoverage) {
+          const shotPos = { lat, lng };
+          const targetPos = obs.position;
+          const prediction = CoverageCalculator.predictShotCoverage(
+            shotPos,
+            targetPos,
+            altitude,
+            buildingHeight,
+            CONFIG.droneSpecs
+          );
+          shotDetails.push({
+            position: shotPos,
+            angle: prediction.angle,
+            fieldOfView: prediction.fieldOfView,
+            willCapture: prediction.willCapture,
+            compassBearing: (angle * 180 / Math.PI + 90) % 360 // Convert to compass bearing
+          });
+        }
       }
+      
       return {
         id: obs.id,
         type: obs.type,
@@ -265,7 +328,9 @@ const LandPlotting = {
         shots,
         radius,
         center: { ...obs.position },
-        points
+        points,
+        shotDetails: shotDetails.length > 0 ? shotDetails : null,
+        buildingHeight
       };
     });
   },
@@ -433,6 +498,65 @@ const LandPlotting = {
     LandPlotting.updateWorkflowSteps();
   },
 
+  canGoToStep2: () => {
+    const plots = LandPlotting.getAllPlots();
+    return plots.length > 0 && !LandPlotting.isPlotting;
+  },
+
+  canGoToStep3: () => {
+    const plots = LandPlotting.getAllPlots();
+    if (plots.length === 0) return false;
+    const latestPlot = LandPlotting.getLatestPlot?.();
+    return latestPlot && latestPlot.obstacleReviewComplete === true;
+  },
+
+  goToStep: (stepNumber) => {
+    if (stepNumber === 1) {
+      // Can always go back to step 1
+      const step1 = document.getElementById('workflowStep1');
+      const step2 = document.getElementById('workflowStep2');
+      const step3 = document.getElementById('workflowStep3');
+      [step1, step2, step3].forEach(step => step?.classList.remove('active'));
+      step1?.classList.add('active');
+      LandPlotting.updateWorkflowSteps();
+    } else if (stepNumber === 2) {
+      if (!LandPlotting.canGoToStep2()) {
+        alert('Please finish mapping your property first.');
+        return false;
+      }
+      const step1 = document.getElementById('workflowStep1');
+      const step2 = document.getElementById('workflowStep2');
+      const step3 = document.getElementById('workflowStep3');
+      [step1, step2, step3].forEach(step => step?.classList.remove('active'));
+      step2?.classList.add('active');
+      LandPlotting.updateWorkflowSteps();
+      return true;
+    } else if (stepNumber === 3) {
+      if (!LandPlotting.canGoToStep3()) {
+        alert('Please complete or skip the building marking step first.');
+        return false;
+      }
+      const step1 = document.getElementById('workflowStep1');
+      const step2 = document.getElementById('workflowStep2');
+      const step3 = document.getElementById('workflowStep3');
+      [step1, step2, step3].forEach(step => step?.classList.remove('active'));
+      step3?.classList.add('active');
+      LandPlotting.updateWorkflowSteps();
+      return true;
+    }
+    return false;
+  },
+
+  getCurrentStep: () => {
+    const step1 = document.getElementById('workflowStep1');
+    const step2 = document.getElementById('workflowStep2');
+    const step3 = document.getElementById('workflowStep3');
+    if (step1?.classList.contains('active')) return 1;
+    if (step2?.classList.contains('active')) return 2;
+    if (step3?.classList.contains('active')) return 3;
+    return 1;
+  },
+
   updateWorkflowSteps: () => {
     const step1 = document.getElementById('workflowStep1');
     const step2 = document.getElementById('workflowStep2');
@@ -446,6 +570,7 @@ const LandPlotting = {
     const latestPlot = LandPlotting.getLatestPlot?.();
     const obstacleComplete = latestPlot ? latestPlot.obstacleReviewComplete === true : false;
     const hasPlot = plots.length > 0;
+    const currentStep = LandPlotting.getCurrentStep();
     
     // Reset all steps
     [step1, step2, step3].forEach(step => {
@@ -454,32 +579,38 @@ const LandPlotting = {
       }
     });
     
-    if (step1) {
-      if (LandPlotting.isPlotting) {
-        step1.classList.add('active');
-      } else if (hasPlot) {
-        step1.classList.add('complete');
-      }
+    // Set active step based on currentStep, but respect state constraints
+    if (currentStep === 1 || LandPlotting.isPlotting) {
+      if (step1) step1.classList.add('active');
+    } else if (hasPlot && currentStep !== 2 && currentStep !== 3) {
+      if (step1) step1.classList.add('complete');
     }
+    
+    if (currentStep === 2 && !LandPlotting.isPlotting) {
+      if (step2) step2.classList.add('active');
+    } else if (hasPlot && obstacleComplete && currentStep !== 2) {
+      if (step2) step2.classList.add('complete');
+    }
+    
+    if (currentStep === 3 && hasPlot && obstacleComplete && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles) {
+      if (step3) step3.classList.add('active');
+    }
+    
+    // Update status labels
     if (step1Status) {
-      if (LandPlotting.isPlotting || !hasPlot) {
+      if (currentStep === 1 || LandPlotting.isPlotting) {
         step1Status.textContent = 'Active';
-      } else {
+      } else if (hasPlot) {
         step1Status.textContent = 'Complete';
+      } else {
+        step1Status.textContent = 'Active';
       }
     }
     
-    if (step2) {
-      if ((LandPlotting.isMarkingObstacles || obstacleVisible) || (hasPlot && !obstacleComplete && !LandPlotting.isPlotting)) {
-        step2.classList.add('active');
-      } else if (hasPlot && obstacleComplete) {
-        step2.classList.add('complete');
-      }
-    }
     if (step2Status) {
       if (LandPlotting.isPlotting) {
         step2Status.textContent = 'Locked';
-      } else if (LandPlotting.isMarkingObstacles || obstacleVisible || (hasPlot && !obstacleComplete)) {
+      } else if (currentStep === 2) {
         step2Status.textContent = 'Active';
       } else if (hasPlot && obstacleComplete) {
         step2Status.textContent = 'Complete';
@@ -490,14 +621,11 @@ const LandPlotting = {
       }
     }
     
-    if (step3) {
-      if (hasPlot && obstacleComplete && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles && !obstacleVisible) {
-        step3.classList.add('active');
-      }
-    }
     if (step3Status) {
-      if (hasPlot && obstacleComplete && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles && !obstacleVisible) {
+      if (currentStep === 3 && hasPlot && obstacleComplete) {
         step3Status.textContent = 'Active';
+      } else if (hasPlot && obstacleComplete) {
+        step3Status.textContent = 'Ready';
       } else if (hasPlot) {
         step3Status.textContent = 'Locked';
       } else {
@@ -519,6 +647,32 @@ const LandPlotting = {
     }
     if (typeof MapManager !== 'undefined' && MapManager.refreshFlightPath) {
       MapManager.refreshFlightPath();
+    }
+
+    // Update map controls visibility (hide in steps 2 and 3)
+    const mapControls = document.querySelector('.map-controls');
+    if (mapControls) {
+      if (currentStep === 1) {
+        mapControls.classList.remove('hidden');
+      } else {
+        mapControls.classList.add('hidden');
+      }
+    }
+
+    // Update navigation buttons
+    const prevBtn = document.getElementById('prevStep');
+    const nextBtn = document.getElementById('nextStep');
+    if (prevBtn) {
+      prevBtn.disabled = currentStep === 1;
+    }
+    if (nextBtn) {
+      if (currentStep === 1) {
+        nextBtn.disabled = !LandPlotting.canGoToStep2();
+      } else if (currentStep === 2) {
+        nextBtn.disabled = !LandPlotting.canGoToStep3();
+      } else {
+        nextBtn.disabled = true; // Step 3 is final
+      }
     }
   },
 
@@ -568,9 +722,15 @@ const LandPlotting = {
     if (typeof Quote !== 'undefined') {
       Quote.calculateCoverage();
     }
+    
+    // Auto-advance to step 3
+    setTimeout(() => {
+      LandPlotting.goToStep(3);
+    }, 100);
   },
 
   skipObstacles: () => {
+    // Skip obstacles is the same as finishing (marks as complete)
     LandPlotting.finishObstacleMarking();
   },
 
@@ -596,8 +756,10 @@ const LandPlotting = {
     if (typeof MapManager !== 'undefined') {
       MapManager.map?.off('click');
       MapManager.map?.getContainer()?.style && (MapManager.map.getContainer().style.cursor = '');
+      // Clear all plots from map visualization
       MapManager.clearAllPlots();
-      LandPlotting.getAllPlots().forEach(plot => MapManager.displayPlot(plot));
+      // Only display the current plot being edited, not all past plots
+      // (Removed: LandPlotting.getAllPlots().forEach(plot => MapManager.displayPlot(plot));)
       MapManager.updatePlotVisualization(LandPlotting.currentPlot);
       MapManager.enterPlottingMode();
     }
