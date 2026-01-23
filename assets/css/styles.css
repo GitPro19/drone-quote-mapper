@@ -773,7 +773,7 @@ html, body {
   font-style: italic;
   margin-top: auto;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
+  border-top: none;
 }
 
 .package-summary {
@@ -818,6 +818,74 @@ html, body {
 .package-summary-item.total strong {
   color: var(--primary);
   font-size: 1.1rem;
+}
+
+.quote-legend {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.quote-legend .legend-block {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+}
+
+.quote-legend .legend-block h4 {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  margin-bottom: 0.6rem;
+}
+
+.legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.legend-item-split {
+  justify-content: space-between;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+
+.legend-dot-topdown {
+  background: #38bdf8;
+}
+
+.legend-dot-angled {
+  background: #0ea5e9;
+}
+
+.legend-dot-building {
+  background: #ef4444;
+}
+
+.legend-package {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.legend-count {
+  color: var(--text-tertiary);
 }
 
 /* Plotting Markers */
@@ -896,6 +964,46 @@ html, body {
 .obstacle-marker-inner.obstacle-marker-shed { background: #3b82f6; }
 .obstacle-marker-inner.obstacle-marker-barn { background: #8b5cf6; }
 .obstacle-marker-inner.obstacle-marker-dock { background: #14b8a6; }
+
+/* POI Markers */
+.poi-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.poi-marker-inner {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #0ea5e9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+  box-shadow: var(--shadow-md);
+}
+
+.poi-marker-label {
+  color: white;
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+}
+
+.poi-marker-inner.poi-marker-garden { background: #10b981; }
+.poi-marker-inner.poi-marker-pool { background: #38bdf8; }
+.poi-marker-inner.poi-marker-pond { background: #0ea5e9; }
+.poi-marker-inner.poi-marker-river { background: #2563eb; }
+.poi-marker-inner.poi-marker-driveway { background: #f59e0b; }
+.poi-marker-inner.poi-marker-viewpoint { background: #a855f7; }
+.poi-marker-inner.poi-marker-trail { background: #22c55e; }
+.poi-marker-inner.poi-marker-other { background: #6b7280; }
+
+#markPoi[data-active="true"] {
+  background: #0ea5e9;
+  box-shadow: 0 4px 10px rgba(14, 165, 233, 0.35);
+}
 
 /* Angle Markers */
 .angle-marker {

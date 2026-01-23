@@ -17,6 +17,7 @@ const MapManager = {
   plotAreaLayer: null,
   previewLine: null,
   obstacleMarkersLayer: null,
+  poiMarkersLayer: null,
   currentPlotMarkers: [],
   currentPlotLines: [],
   currentAreaPolygon: null,
@@ -129,6 +130,7 @@ const MapManager = {
       
       MapManager.map.whenReady(() => {
         console.log('Map is ready!');
+        if (typeof LandPlotting !== 'undefined') { LandPlotting.getAllPlots().forEach(plot => MapManager.displayPlot(plot)); }
         MapManager.map.invalidateSize();
       });
       
@@ -152,11 +154,13 @@ const MapManager = {
     MapManager.plotLinesLayer = new L.FeatureGroup();
     MapManager.plotAreaLayer = new L.FeatureGroup();
     MapManager.obstacleMarkersLayer = new L.FeatureGroup();
+    MapManager.poiMarkersLayer = new L.FeatureGroup();
     
     MapManager.map.addLayer(MapManager.plotMarkersLayer);
     MapManager.map.addLayer(MapManager.plotLinesLayer);
     MapManager.map.addLayer(MapManager.plotAreaLayer);
     MapManager.map.addLayer(MapManager.obstacleMarkersLayer);
+    MapManager.map.addLayer(MapManager.poiMarkersLayer);
   },
 
   setupEventListeners: () => {
@@ -216,6 +220,8 @@ const MapManager = {
     // Obstacle marking
     const markHouseBtn = document.getElementById('markHouse');
     const obstacleTypeSelect = document.getElementById('obstacleType');
+    const markPoiBtn = document.getElementById('markPoi');
+    const poiTypeSelect = document.getElementById('poiType');
     const finishObstaclesBtn = document.getElementById('finishObstacleMarking');
     const skipObstaclesBtn = document.getElementById('skipObstacles');
     const readjustBtn = document.getElementById('readjustPlotting');
@@ -233,6 +239,23 @@ const MapManager = {
           MapManager.setObstacleMarkingUI(LandPlotting.isMarkingObstacles, type);
         } else {
           MapManager.setObstacleMarkingUI(false, type);
+        }
+      });
+    }
+
+    if (markPoiBtn) {
+      markPoiBtn.addEventListener('click', () => {
+        MapManager.enterPoiMarkingMode();
+      });
+    }
+
+    if (poiTypeSelect) {
+      poiTypeSelect.addEventListener('change', () => {
+        const type = poiTypeSelect.value || 'garden';
+        if (typeof LandPlotting !== 'undefined') {
+          MapManager.setPoiMarkingUI(LandPlotting.isMarkingPois, type);
+        } else {
+          MapManager.setPoiMarkingUI(false, type);
         }
       });
     }
@@ -504,7 +527,9 @@ const MapManager = {
     );
     
     if (result) {
-      const totalPhotos = photoPlan?.totalPhotos || result.photos.recommended;
+      const totalPhotos = Number.isFinite(photoPlan?.totalPhotos)
+        ? photoPlan.totalPhotos
+        : result.photos.recommended;
       if (photoPlan && typeof Quote !== 'undefined') {
         Quote.lastPhotoPlan = photoPlan;
         if (Quote.updatePackageSummary) {
@@ -575,53 +600,64 @@ const MapManager = {
 
     MapManager.flightPathLayer = new L.FeatureGroup();
     
-    const lineStyle = MapManager.getFlightLineStyle(flightPath);
-    const maxLines = MapManager.getFlightLineBudget(flightPath);
-
-    // Draw flight lines
-    const waypoints = Array.isArray(flightPath.waypoints) ? flightPath.waypoints : [];
-    const lineStride = waypoints.length ? Math.max(1, Math.ceil(waypoints.length / maxLines)) : 1;
-    waypoints.forEach((line, lineIndex) => {
-      if (lineIndex % lineStride !== 0 && lineIndex !== waypoints.length - 1) return;
-      const maxPoints = 14;
-      const pointStride = Math.max(1, Math.ceil(line.length / maxPoints));
-      const sampled = line.filter((_, idx) => idx % pointStride === 0 || idx === line.length - 1);
-      const latlngs = sampled.map(wp => [wp[0], wp[1]]);
-      if (latlngs.length < 2) return;
-      const glow = L.polyline(latlngs, {
-        color: '#22d3ee',
-        weight: 5,
-        opacity: 0.2,
-        lineCap: 'round',
-        lineJoin: 'round',
-        pane: 'flightPath'
-      });
-      const polyline = L.polyline(latlngs, {
-        color: '#f59e0b',
-        weight: lineStyle.weight,
-        opacity: lineStyle.opacity,
-        dashArray: lineStyle.dashArray,
-        lineCap: 'round',
-        lineJoin: 'round',
-        pane: 'flightPath'
-      });
-      MapManager.flightPathLayer.addLayer(glow);
-      MapManager.flightPathLayer.addLayer(polyline);
-    });
+    // Flight lines hidden for a cleaner Step 3 view (dots and orbits only).
 
     const shotPoints = Array.isArray(flightPath.shotPoints) ? flightPath.shotPoints : [];
     shotPoints.filter(shot => shot.type === 'top-down').forEach((shot) => {
       const marker = L.circleMarker([shot.lat, shot.lng], {
-        radius: 4,
+        radius: 6,
         fillColor: '#38bdf8',
         color: '#0f172a',
-        weight: 1,
-        opacity: 0.9,
-        fillOpacity: 0.95,
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.98,
         pane: 'flightPath'
       });
       MapManager.flightPathLayer.addLayer(marker);
     });
+
+    let propertyOrbit = flightPath.propertyOrbit;
+    if (typeof LandPlotting !== 'undefined' && LandPlotting.getPropertyOrbit) {
+      const activePlot = LandPlotting.getActivePlot?.();
+      const shotCount = Number.isFinite(flightPath.angledShots)
+        ? flightPath.angledShots
+        : Number(propertyOrbit?.shots);
+      if (activePlot && Number.isFinite(shotCount) && shotCount > 0) {
+        const recalculated = LandPlotting.getPropertyOrbit(activePlot, shotCount);
+        if (recalculated) {
+          propertyOrbit = recalculated;
+        }
+      }
+    }
+    if (propertyOrbit && Array.isArray(propertyOrbit.points) && propertyOrbit.points.length > 0) {
+      const orbitLatLngs = propertyOrbit.points.map(point => [point[0], point[1]]);
+      if (orbitLatLngs.length > 1) {
+        const closed = [...orbitLatLngs, orbitLatLngs[0]];
+        const orbitLine = L.polyline(closed, {
+          color: '#0ea5e9',
+          weight: 1.5,
+          opacity: 0.55,
+          dashArray: '2 6',
+          lineCap: 'round',
+          lineJoin: 'round',
+          pane: 'flightPath'
+        });
+        MapManager.flightPathLayer.addLayer(orbitLine);
+      }
+      
+      propertyOrbit.points.forEach((point) => {
+        const marker = L.circleMarker([point[0], point[1]], {
+          radius: 6,
+          fillColor: '#0ea5e9',
+          color: '#0f172a',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9,
+          pane: 'flightPath'
+        });
+        MapManager.flightPathLayer.addLayer(marker);
+      });
+    }
 
     const orbits = Array.isArray(flightPath.orbits) ? flightPath.orbits : [];
     orbits.forEach((orbit) => {
@@ -973,6 +1009,12 @@ const MapManager = {
         MapManager.addObstacleMarker(obstacle);
       });
     }
+    
+    if (plot.pois) {
+      plot.pois.forEach(poi => {
+        MapManager.addPoiMarker(poi);
+      });
+    }
   },
 
   clearAllPlots: () => {
@@ -980,6 +1022,7 @@ const MapManager = {
     MapManager.plotLinesLayer.clearLayers();
     MapManager.plotAreaLayer.clearLayers();
     MapManager.obstacleMarkersLayer.clearLayers();
+    MapManager.poiMarkersLayer.clearLayers();
     MapManager.currentPlotMarkers = [];
     MapManager.currentPlotLines = [];
     MapManager.currentAreaPolygon = null;
@@ -995,6 +1038,7 @@ const MapManager = {
     }
     
     LandPlotting.isMarkingObstacles = true;
+    LandPlotting.isMarkingPois = false;
     const currentPlot = plots[plots.length - 1];
     
     // Remove any existing click handlers first
@@ -1016,6 +1060,51 @@ const MapManager = {
 
     const activeType = document.getElementById('obstacleType')?.value || type || 'house';
     MapManager.setObstacleMarkingUI(true, activeType);
+    if (typeof MapManager.setPoiMarkingUI === 'function') {
+      const poiType = document.getElementById('poiType')?.value || 'garden';
+      MapManager.setPoiMarkingUI(false, poiType);
+    }
+    MapManager.updateObstaclesList();
+    
+    LandPlotting.updateWorkflowSteps();
+  },
+
+  enterPoiMarkingMode: (type) => {
+    if (typeof LandPlotting === 'undefined') return;
+    
+    const plots = LandPlotting.getAllPlots();
+    if (plots.length === 0) {
+      alert('Please finish plotting your land first');
+      return;
+    }
+    
+    LandPlotting.isMarkingPois = true;
+    LandPlotting.isMarkingObstacles = false;
+    const currentPlot = plots[plots.length - 1];
+    
+    MapManager.map.off('click');
+    
+    const poiClickHandler = (e) => {
+      if (!LandPlotting.isMarkingPois) {
+        MapManager.map.off('click', poiClickHandler);
+        return;
+      }
+      const typeSelect = document.getElementById('poiType');
+      const selectedType = typeSelect?.value || type || 'garden';
+      LandPlotting.addPoi(currentPlot.id, e.latlng.lat, e.latlng.lng, selectedType);
+      MapManager.updatePoisList();
+    };
+    
+    MapManager.map.on('click', poiClickHandler);
+    MapManager.map.getContainer().style.cursor = 'crosshair';
+    
+    const activeType = document.getElementById('poiType')?.value || type || 'garden';
+    MapManager.setPoiMarkingUI(true, activeType);
+    if (typeof MapManager.setObstacleMarkingUI === 'function') {
+      const obstacleType = document.getElementById('obstacleType')?.value || 'house';
+      MapManager.setObstacleMarkingUI(false, obstacleType);
+    }
+    MapManager.updatePoisList();
     
     LandPlotting.updateWorkflowSteps();
   },
@@ -1027,6 +1116,18 @@ const MapManager = {
     if (normalized === 'barn') return { type: 'barn', label: 'B' };
     if (normalized === 'dock') return { type: 'dock', label: 'D' };
     return { type: 'house', label: 'H' };
+  },
+
+  getPoiIcon: (type) => {
+    const normalized = String(type || 'garden').toLowerCase();
+    if (normalized === 'pool') return { type: 'pool', label: 'P' };
+    if (normalized === 'pond') return { type: 'pond', label: 'P' };
+    if (normalized === 'river') return { type: 'river', label: 'R' };
+    if (normalized === 'driveway') return { type: 'driveway', label: 'D' };
+    if (normalized === 'viewpoint') return { type: 'viewpoint', label: 'V' };
+    if (normalized === 'trail') return { type: 'trail', label: 'T' };
+    if (normalized === 'other') return { type: 'other', label: 'O' };
+    return { type: 'garden', label: 'G' };
   },
 
   setObstacleMarkingUI: (isActive, type) => {
@@ -1043,6 +1144,27 @@ const MapManager = {
     if (hint) {
       if (isActive) {
         hint.textContent = `Click on the map to place a ${label}.`;
+        hint.classList.remove('is-hidden');
+      } else {
+        hint.classList.add('is-hidden');
+      }
+    }
+  },
+
+  setPoiMarkingUI: (isActive, type) => {
+    const button = document.getElementById('markPoi');
+    const hint = document.getElementById('markPoiHint');
+    const selectedType = type || document.getElementById('poiType')?.value || 'garden';
+    const label = typeof LandPlotting !== 'undefined' && LandPlotting.getPoiLabelForType
+      ? LandPlotting.getPoiLabelForType(selectedType)
+      : selectedType;
+    if (button) {
+      button.dataset.active = isActive ? 'true' : 'false';
+      button.textContent = isActive ? `Click map to place ${label}` : 'Mark a POI';
+    }
+    if (hint) {
+      if (isActive) {
+        hint.textContent = `Click on the map to place ${label}.`;
         hint.classList.remove('is-hidden');
       } else {
         hint.classList.add('is-hidden');
@@ -1087,10 +1209,54 @@ const MapManager = {
     MapManager.obstacleMarkersLayer.addLayer(marker);
   },
 
+  addPoiMarker: (poi) => {
+    const icon = MapManager.getPoiIcon(poi.type);
+    const marker = L.marker([poi.position.lat, poi.position.lng], {
+      icon: L.divIcon({
+        className: 'poi-marker poi-marker-' + poi.type,
+        html: `<div class="poi-marker-inner poi-marker-${icon.type}"><span class="poi-marker-label">${icon.label}</span></div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      }),
+      draggable: true
+    });
+    
+    marker.poiId = poi.id;
+    marker.on('dragend', (e) => {
+      const plot = LandPlotting.allPlots.find(p => p.id === poi.plotId);
+      if (plot) {
+        const target = plot.pois?.find(p => p.id === poi.id);
+        if (target) {
+          target.position.lat = e.target.getLatLng().lat;
+          target.position.lng = e.target.getLatLng().lng;
+          LandPlotting.savePlots();
+        }
+      }
+    });
+    
+    marker.on('contextmenu', (e) => {
+      e.originalEvent.preventDefault();
+      if (confirm('Delete this POI?')) {
+        LandPlotting.removePoi(poi.plotId, poi.id);
+        MapManager.updatePoisList();
+      }
+    });
+    
+    MapManager.poiMarkersLayer.addLayer(marker);
+  },
+
   removeObstacleMarker: (obstacleId) => {
     MapManager.obstacleMarkersLayer.eachLayer((layer) => {
       if (layer.obstacleId === obstacleId) {
         MapManager.obstacleMarkersLayer.removeLayer(layer);
+      }
+    });
+  },
+
+  removePoiMarker: (poiId) => {
+    MapManager.poiMarkersLayer.eachLayer((layer) => {
+      if (layer.poiId === poiId) {
+        MapManager.poiMarkersLayer.removeLayer(layer);
       }
     });
   },
@@ -1134,6 +1300,56 @@ const MapManager = {
         }
         LandPlotting.renameObstacle(currentPlot.id, obstacle.id, nextName);
         MapManager.updateObstaclesList();
+      };
+      input.addEventListener('blur', saveName);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          input.blur();
+        }
+      });
+    });
+  },
+
+  updatePoisList: () => {
+    if (typeof LandPlotting === 'undefined') return;
+    const plots = LandPlotting.getAllPlots();
+    if (plots.length === 0) return;
+    
+    const currentPlot = plots[plots.length - 1];
+    const poiList = document.getElementById('poiList');
+    if (!poiList) return;
+    
+    if (!currentPlot.pois || currentPlot.pois.length === 0) {
+      poiList.innerHTML = '<p class="empty-state">No points of interest yet</p>';
+      return;
+    }
+    
+    poiList.innerHTML = currentPlot.pois.map((poi, index) => `
+      <div class="obstacle-item">
+        <input type="text" class="form-input poi-name-input" data-id="${poi.id}" value="${Utils.escapeHtml(poi.name || `${LandPlotting.getPoiLabelForType(poi.type)} ${index + 1}`)}" aria-label="POI name">
+        <button class="btn-icon delete-poi" data-id="${poi.id}">Delete</button>
+      </div>
+    `).join('');
+    
+    poiList.querySelectorAll('.delete-poi').forEach(btn => {
+      btn.addEventListener('click', () => {
+        LandPlotting.removePoi(currentPlot.id, btn.dataset.id);
+        MapManager.updatePoisList();
+      });
+    });
+
+    poiList.querySelectorAll('.poi-name-input').forEach(input => {
+      const saveName = () => {
+        const poi = currentPlot.pois.find(p => p.id === input.dataset.id);
+        if (!poi) return;
+        const nextName = input.value.trim();
+        if (!nextName) {
+          input.value = poi.name || `${LandPlotting.getPoiLabelForType(poi.type)} ${currentPlot.pois.indexOf(poi) + 1}`;
+          return;
+        }
+        LandPlotting.renamePoi(currentPlot.id, poi.id, nextName);
+        MapManager.updatePoisList();
       };
       input.addEventListener('blur', saveName);
       input.addEventListener('keydown', (e) => {

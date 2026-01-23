@@ -1,6 +1,7 @@
 const LandPlotting = {
   isPlotting: false,
   isMarkingObstacles: false,
+  isMarkingPois: false,
   currentPlot: null,
   allPlots: [],
   selectedPointIndex: null,
@@ -54,6 +55,7 @@ const LandPlotting = {
       name: 'Plot ' + (LandPlotting.allPlots.length + 1),
       points: [],
       obstacles: [],
+      pois: [],
       area: null,
       perimeter: null,
       createdAt: new Date().toISOString(),
@@ -266,13 +268,43 @@ const LandPlotting = {
     return radii[normalized] || fallback;
   },
 
-  getBuildingPhotoCount: (plot) => {
-    if (!plot || !plot.obstacles) return 0;
-    return plot.obstacles.reduce((total, obs) => total + LandPlotting.getBuildingShotCountForType(obs.type), 0);
+  getIncludedObstacles: (plot, includedBuildings, options = {}) => {
+    if (!plot || !Array.isArray(plot.obstacles)) return [];
+    if (!Number.isFinite(includedBuildings) || includedBuildings < 0) {
+      return plot.obstacles.slice();
+    }
+    const limit = Math.max(0, Math.round(includedBuildings));
+    if (limit === 0) return [];
+    const obstacles = plot.obstacles.slice();
+    if (options?.packageId === 'economy') {
+      const priority = ['house', 'garage'];
+      const ranked = obstacles.map((obs, index) => {
+        const type = String(obs.type || '').toLowerCase();
+        const priorityIndex = priority.indexOf(type);
+        return {
+          obs,
+          index,
+          priority: priorityIndex === -1 ? priority.length : priorityIndex
+        };
+      });
+      ranked.sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority - b.priority;
+        return a.index - b.index;
+      });
+      return ranked.slice(0, limit).map(item => item.obs);
+    }
+    return obstacles.slice(0, limit);
   },
 
-  getBuildingOrbits: (plot) => {
-    if (!plot || !plot.obstacles) return [];
+  getBuildingPhotoCount: (plot, includedBuildings, options = {}) => {
+    const obstacles = LandPlotting.getIncludedObstacles(plot, includedBuildings, options);
+    if (obstacles.length === 0) return 0;
+    return obstacles.reduce((total, obs) => total + LandPlotting.getBuildingShotCountForType(obs.type), 0);
+  },
+
+  getBuildingOrbits: (plot, includedBuildings, totalBuildingShots, options = {}) => {
+    const obstacles = LandPlotting.getIncludedObstacles(plot, includedBuildings, options);
+    if (obstacles.length === 0) return [];
     const altitude = CONFIG.droneSpecs?.defaultAltitude || 60;
     const buildingHeights = {
       house: 6, // meters, typical single-story
@@ -283,8 +315,30 @@ const LandPlotting = {
       default: 4
     };
     
-    return plot.obstacles.map(obs => {
-      const shots = LandPlotting.getBuildingShotCountForType(obs.type);
+    const baseShots = obstacles.map(obs => LandPlotting.getBuildingShotCountForType(obs.type));
+    let allocations = baseShots;
+    if (Number.isFinite(totalBuildingShots)) {
+      const total = Math.max(0, Math.round(totalBuildingShots));
+      const baseTotal = baseShots.reduce((sum, count) => sum + count, 0);
+      if (baseTotal <= 0 || total <= 0) {
+        allocations = baseShots.map(() => 0);
+      } else if (total < baseTotal) {
+        const raw = baseShots.map(count => (count / baseTotal) * total);
+        const floors = raw.map(count => Math.floor(count));
+        let remaining = total - floors.reduce((sum, count) => sum + count, 0);
+        const fractions = raw
+          .map((count, index) => ({ index, fraction: count - floors[index] }))
+          .sort((a, b) => b.fraction - a.fraction);
+        for (let i = 0; i < remaining; i++) {
+          floors[fractions[i].index] += 1;
+        }
+        allocations = floors;
+      }
+    }
+
+    return obstacles.map((obs, index) => {
+      const shots = allocations[index] ?? baseShots[index];
+      if (shots <= 0) return null;
       const radius = LandPlotting.getBuildingShotRadiusForType(obs.type);
       const buildingHeight = buildingHeights[obs.type?.toLowerCase()] || buildingHeights.default;
       const points = [];
@@ -332,7 +386,106 @@ const LandPlotting = {
         shotDetails: shotDetails.length > 0 ? shotDetails : null,
         buildingHeight
       };
+    }).filter(Boolean);
+  },
+
+  getPropertyOrbit: (plot, shotCount) => {
+    const count = Math.max(0, Math.round(shotCount || 0));
+    if (!plot || !plot.points || plot.points.length < 3 || count === 0) return null;
+    
+    const coords = plot.points.map(p => [p.lat, p.lng]);
+    const ring = coords.concat([coords[0]]);
+    const configuredOffset = (typeof CONFIG !== 'undefined')
+      ? Number(CONFIG.flightPathDefaults?.propertyOrbitOffsetMeters)
+      : NaN;
+    const offsetMeters = Number.isFinite(configuredOffset) ? Math.max(0, configuredOffset) : 10;
+    const origin = coords.reduce((acc, point) => {
+      acc.lat += point[0];
+      acc.lng += point[1];
+      return acc;
+    }, { lat: 0, lng: 0 });
+    origin.lat /= coords.length;
+    origin.lng /= coords.length;
+    const latRad = (origin.lat * Math.PI) / 180;
+    const metersPerLat = 111320;
+    const metersPerLng = 111320 * Math.cos(latRad) || 1e-6;
+    const toXY = (lat, lng) => ({
+      x: (lng - origin.lng) * metersPerLng,
+      y: (lat - origin.lat) * metersPerLat
     });
+    const ringXY = ring.map(point => toXY(point[0], point[1]));
+    let area = 0;
+    for (let i = 0; i < ringXY.length - 1; i++) {
+      area += (ringXY[i].x * ringXY[i + 1].y) - (ringXY[i + 1].x * ringXY[i].y);
+    }
+    const isCCW = area > 0;
+    const segments = [];
+    let totalDistance = 0;
+    
+    for (let i = 0; i < ring.length - 1; i++) {
+      const start = ring[i];
+      const end = ring[i + 1];
+      const startXY = ringXY[i];
+      const endXY = ringXY[i + 1];
+      const dx = endXY.x - startXY.x;
+      const dy = endXY.y - startXY.y;
+      let nx = isCCW ? dy : -dy;
+      let ny = isCCW ? -dx : dx;
+      const normalLength = Math.hypot(nx, ny) || 1;
+      nx /= normalLength;
+      ny /= normalLength;
+      const distance = Measurements.calculateDistance(start, end);
+      const meters = distance?.meters || 0;
+      if (meters > 0) {
+        segments.push({
+          start: { lat: start[0], lng: start[1] },
+          end: { lat: end[0], lng: end[1] },
+          meters,
+          startX: startXY.x,
+          startY: startXY.y,
+          dx,
+          dy,
+          nx,
+          ny
+        });
+        totalDistance += meters;
+      }
+    }
+    
+    if (!Number.isFinite(totalDistance) || totalDistance <= 0) return null;
+    
+    const spacing = totalDistance / count;
+    const startOffset = spacing / 2;
+    const points = [];
+    let segmentIndex = 0;
+    let segmentStartDistance = 0;
+    
+    for (let i = 0; i < count; i++) {
+      const targetDistance = startOffset + i * spacing;
+      while (segmentIndex < segments.length - 1 &&
+        segmentStartDistance + segments[segmentIndex].meters < targetDistance) {
+        segmentStartDistance += segments[segmentIndex].meters;
+        segmentIndex += 1;
+      }
+      
+      const segment = segments[segmentIndex];
+      const offset = Math.max(0, targetDistance - segmentStartDistance);
+      const ratio = segment.meters > 0 ? Math.min(offset / segment.meters, 1) : 0;
+      const x = segment.startX + (segment.dx * ratio) + (segment.nx * offsetMeters);
+      const y = segment.startY + (segment.dy * ratio) + (segment.ny * offsetMeters);
+      const lat = origin.lat + (y / metersPerLat);
+      const lng = origin.lng + (x / metersPerLng);
+      points.push([lat, lng]);
+    }
+    
+    return {
+      id: plot.id,
+      type: 'property',
+      name: plot.name || 'Property',
+      shots: count,
+      center: null,
+      points
+    };
   },
 
   getNextObstacleName: (plot, type) => {
@@ -386,6 +539,74 @@ const LandPlotting = {
     
     if (typeof MapManager !== 'undefined') {
       MapManager.removeObstacleMarker(obstacleId);
+    }
+  },
+
+  getPoiLabelForType: (type) => {
+    if (!type) return 'Point of Interest';
+    const normalized = String(type).toLowerCase();
+    if (normalized === 'garden') return 'Garden';
+    if (normalized === 'pool') return 'Pool';
+    if (normalized === 'pond') return 'Pond';
+    if (normalized === 'river') return 'River';
+    if (normalized === 'driveway') return 'Driveway';
+    if (normalized === 'viewpoint') return 'Viewpoint';
+    if (normalized === 'trail') return 'Trail';
+    if (normalized === 'other') return 'POI';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  },
+
+  getNextPoiName: (plot, type) => {
+    const label = LandPlotting.getPoiLabelForType(type);
+    const existing = (plot?.pois || []).filter(p => LandPlotting.getPoiLabelForType(p.type) === label).length;
+    return `${label} ${existing + 1}`;
+  },
+
+  addPoi: (plotId, lat, lng, type = 'garden') => {
+    const plot = LandPlotting.allPlots.find(p => p.id === plotId);
+    if (!plot) return;
+    
+    const poi = {
+      id: 'poi_' + Date.now(),
+      plotId: plotId,
+      type: type,
+      name: LandPlotting.getNextPoiName(plot, type),
+      position: { lat: lat, lng: lng },
+      createdAt: new Date().toISOString()
+    };
+    
+    if (!plot.pois) plot.pois = [];
+    plot.pois.push(poi);
+    LandPlotting.savePlots();
+    
+    if (typeof MapManager !== 'undefined') {
+      MapManager.addPoiMarker(poi);
+    }
+    
+    return poi;
+  },
+
+  renamePoi: (plotId, poiId, name) => {
+    const plot = LandPlotting.allPlots.find(p => p.id === plotId);
+    if (!plot || !plot.pois) return null;
+    const poi = plot.pois.find(p => p.id === poiId);
+    if (!poi) return null;
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return null;
+    poi.name = trimmed;
+    LandPlotting.savePlots();
+    return poi;
+  },
+
+  removePoi: (plotId, poiId) => {
+    const plot = LandPlotting.allPlots.find(p => p.id === plotId);
+    if (!plot || !plot.pois) return;
+    
+    plot.pois = plot.pois.filter(p => p.id !== poiId);
+    LandPlotting.savePlots();
+    
+    if (typeof MapManager !== 'undefined') {
+      MapManager.removePoiMarker(poiId);
     }
   },
 
@@ -592,7 +813,7 @@ const LandPlotting = {
       if (step2) step2.classList.add('complete');
     }
     
-    if (currentStep === 3 && hasPlot && obstacleComplete && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles) {
+    if (currentStep === 3 && hasPlot && obstacleComplete && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles && !LandPlotting.isMarkingPois) {
       if (step3) step3.classList.add('active');
     }
     
@@ -641,7 +862,7 @@ const LandPlotting = {
       }
     }
     if (hasPlot && !obstacleComplete && !LandPlotting.isPlotting) {
-      if (typeof MapManager !== 'undefined' && MapManager.map && !LandPlotting.isMarkingObstacles) {
+      if (typeof MapManager !== 'undefined' && MapManager.map && !LandPlotting.isMarkingObstacles && !LandPlotting.isMarkingPois) {
         MapManager.enterObstacleMarkingMode();
       }
     }
@@ -674,6 +895,15 @@ const LandPlotting = {
         nextBtn.disabled = true; // Step 3 is final
       }
     }
+
+    if (currentStep === 2 && typeof MapManager !== 'undefined') {
+      if (typeof MapManager.updateObstaclesList === 'function') {
+        MapManager.updateObstaclesList();
+      }
+      if (typeof MapManager.updatePoisList === 'function') {
+        MapManager.updatePoisList();
+      }
+    }
   },
 
   showObstacleOption: () => {
@@ -691,12 +921,16 @@ const LandPlotting = {
 
   finishObstacleMarking: () => {
     LandPlotting.isMarkingObstacles = false;
+    LandPlotting.isMarkingPois = false;
     const obstaclePanel = document.getElementById('obstaclePanel');
     if (obstaclePanel) {
       obstaclePanel.classList.add('is-hidden');
     }
     if (typeof MapManager !== 'undefined' && MapManager.setObstacleMarkingUI) {
       MapManager.setObstacleMarkingUI(false);
+    }
+    if (typeof MapManager !== 'undefined' && MapManager.setPoiMarkingUI) {
+      MapManager.setPoiMarkingUI(false);
     }
     const latest = LandPlotting.getLatestPlot?.();
     if (latest) {
@@ -745,12 +979,16 @@ const LandPlotting = {
     LandPlotting.currentPlot = lastPlot;
     LandPlotting.isPlotting = true;
     LandPlotting.isMarkingObstacles = false;
+    LandPlotting.isMarkingPois = false;
     const obstaclePanel = document.getElementById('obstaclePanel');
     if (obstaclePanel) {
       obstaclePanel.classList.add('is-hidden');
     }
     if (typeof MapManager !== 'undefined' && MapManager.setObstacleMarkingUI) {
       MapManager.setObstacleMarkingUI(false);
+    }
+    if (typeof MapManager !== 'undefined' && MapManager.setPoiMarkingUI) {
+      MapManager.setPoiMarkingUI(false);
     }
 
     if (typeof MapManager !== 'undefined') {

@@ -113,6 +113,25 @@
               <button id="markHouse" class="btn btn-primary">Mark a Building</button>
               <p class="help-text is-hidden" id="markBuildingHint">Click on the map to place a building marker.</p>
               <div id="obstaclesList" class="obstacles-list"></div>
+              <div class="poi-panel">
+                <p class="step-instruction" style="margin-top: 1rem;">Mark any points of interest like gardens, pools, rivers, or entrances.</p>
+                <div class="form-group">
+                  <label for="poiType">POI type</label>
+                  <select id="poiType" class="form-select" aria-label="POI type">
+                    <option value="garden">Garden</option>
+                    <option value="pool">Pool</option>
+                    <option value="pond">Pond</option>
+                    <option value="river">River/Stream</option>
+                    <option value="driveway">Driveway/Entrance</option>
+                    <option value="viewpoint">Viewpoint</option>
+                    <option value="trail">Trail</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <button id="markPoi" class="btn btn-info">Mark a POI</button>
+                <p class="help-text is-hidden" id="markPoiHint">Click on the map to place a POI marker.</p>
+                <div id="poiList" class="obstacles-list poi-list"></div>
+              </div>
               <div class="obstacle-actions">
                 <button id="readjustPlotting" class="btn btn-secondary">Readjust Boundary</button>
                 <button id="resetPlot" class="btn btn-warning">Reset to Step 1</button>
@@ -139,11 +158,6 @@
                 <li>Most drone shots are angled; only the top-down shots show on the map.</li>
                 <li>Hover over angle markers (red circles) on building orbits to see shot predictions and camera angles.</li>
               </ul>
-              <div class="shot-prediction-info is-hidden" id="shotPredictionInfo">
-                <h4>📸 Shot Predictions & Camera Angles</h4>
-                <p class="help-text" style="margin-bottom: 1rem;">Detailed predictions of what will be captured from each shot position, including camera angles, distances, and field of view measurements.</p>
-                <div id="shotPredictionDetails"></div>
-              </div>
               <div class="form-group">
                 <label for="quotePackage" style="font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; display: block;">Choose Your Drone Photo Package</label>
                 <div class="package-selector" id="packageSelector">
@@ -172,6 +186,29 @@
                   <div class="package-summary-item total">
                     <span>Total drone photos:</span>
                     <strong id="quotePackagePhotoCount">-</strong>
+                  </div>
+                </div>
+                <div class="quote-legend">
+                  <div class="legend-block">
+                    <h4>Shot Color Key</h4>
+                    <div class="legend-items">
+                      <div class="legend-item">
+                        <span class="legend-dot legend-dot-topdown"></span>
+                        <span>Top-down shots</span>
+                      </div>
+                      <div class="legend-item">
+                        <span class="legend-dot legend-dot-angled"></span>
+                        <span>Angled property shots</span>
+                      </div>
+                      <div class="legend-item">
+                        <span class="legend-dot legend-dot-building"></span>
+                        <span>Building orbit shots</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="legend-block">
+                    <h4>Package Totals</h4>
+                    <div class="legend-items" id="packageTotalsLegend"></div>
                   </div>
                 </div>
               </div>
@@ -352,6 +389,13 @@
             <div class="form-group">
               <label for="targetGSD">Target GSD (cm/pixel)</label>
               <input type="number" id="targetGSD" class="form-input" step="0.1" min="0.5" max="10" value="2.5" aria-label="Target GSD in centimeters per pixel">
+            </div>
+          </div>
+          <div class="section">
+            <h3>Flight Path Defaults</h3>
+            <div class="form-group">
+              <label for="propertyOrbitOffsetMeters">Property orbit offset (meters)</label>
+              <input type="number" id="propertyOrbitOffsetMeters" class="form-input" step="1" min="0" value="10" aria-label="Property orbit offset in meters">
             </div>
           </div>
           <button id="saveSettings" class="btn btn-primary">Save Settings</button>

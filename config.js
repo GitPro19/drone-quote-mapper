@@ -26,8 +26,9 @@ const CONFIG = {
       topDownShots: 2, 
       spacingMultiplier: 1.4, 
       altitudeMultiplier: 1.3,
+      includedBuildings: 1,
       basePrice: 199,
-      includes: ['10-15 edited aerial photos', 'Basic editing', 'Standard turnaround (3-5 days)', 'Digital delivery'],
+      includes: ['10-15 edited aerial photos', 'Basic editing', 'Standard turnaround (3-5 days)', 'Digital delivery', 'Includes 1 building orbit'],
       bestFor: 'Small residential properties, quick listings'
     },
     { 
@@ -38,8 +39,9 @@ const CONFIG = {
       topDownShots: 3, 
       spacingMultiplier: 1.0, 
       altitudeMultiplier: 1.0,
+      includedBuildings: 2,
       basePrice: 449,
-      includes: ['20-30 edited aerial photos', '30-60 second video compilation', 'Professional editing', 'Priority turnaround (2-3 days)', 'Digital delivery + social media formats'],
+      includes: ['20-30 edited aerial photos', '30-60 second video compilation', 'Professional editing', 'Priority turnaround (2-3 days)', 'Digital delivery + social media formats', 'Includes 2 building orbits'],
       bestFor: 'Medium properties, real estate listings, commercial properties',
       popular: true
     },
@@ -51,8 +53,9 @@ const CONFIG = {
       topDownShots: 4, 
       spacingMultiplier: 0.85, 
       altitudeMultiplier: 0.9,
+      includedBuildings: null,
       basePrice: 849,
-      includes: ['30-50 edited aerial photos', '2-3 minute extended video', 'Premium color grading', '2D property map', 'Same-day or next-day turnaround', 'All digital formats + print-ready files', '360° aerial panoramas (optional)'],
+      includes: ['30-50 edited aerial photos', '2-3 minute extended video', 'Premium color grading', '2D property map', 'Same-day or next-day turnaround', 'All digital formats + print-ready files', '360° aerial panoramas (optional)', 'Unlimited building orbits'],
       bestFor: 'Large properties, luxury listings, commercial/industrial, marketing materials'
     }
   ],
@@ -86,7 +89,11 @@ const CONFIG = {
   coverageDefaults: {
     frontOverlap: 70,
     sideOverlap: 60,
-    targetGSD: 2.5
+    targetGSD: 2.5,
+    topDownAltitudeFeet: 400
+  },
+  flightPathDefaults: {
+    propertyOrbitOffsetMeters: 10
   },
   company: { name: 'Your Drone Service', email: '', phone: '', address: '' },
   defaultUnit: 'acres',

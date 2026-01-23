@@ -116,8 +116,18 @@ const App = {
       CONFIG.coverageDefaults.frontOverlap = parseInt(document.getElementById('defaultFrontOverlap').value);
       CONFIG.coverageDefaults.sideOverlap = parseInt(document.getElementById('defaultSideOverlap').value);
       CONFIG.coverageDefaults.targetGSD = parseFloat(document.getElementById('targetGSD').value);
+
+      // Flight path defaults
+      if (!CONFIG.flightPathDefaults) CONFIG.flightPathDefaults = {};
+      const propertyOrbitOffset = parseFloat(document.getElementById('propertyOrbitOffsetMeters').value);
+      CONFIG.flightPathDefaults.propertyOrbitOffsetMeters = Number.isFinite(propertyOrbitOffset)
+        ? Math.max(0, propertyOrbitOffset)
+        : 10;
       
       saveConfig();
+      if (typeof MapManager !== 'undefined' && MapManager.refreshFlightPath) {
+        MapManager.refreshFlightPath();
+      }
       alert('Settings saved!');
     });
     
@@ -143,5 +153,7 @@ const App = {
     document.getElementById('defaultFrontOverlap').value = CONFIG.coverageDefaults?.frontOverlap || 70;
     document.getElementById('defaultSideOverlap').value = CONFIG.coverageDefaults?.sideOverlap || 60;
     document.getElementById('targetGSD').value = CONFIG.coverageDefaults?.targetGSD || 2.5;
+    const orbitOffset = Number(CONFIG.flightPathDefaults?.propertyOrbitOffsetMeters);
+    document.getElementById('propertyOrbitOffsetMeters').value = Number.isFinite(orbitOffset) ? orbitOffset : 10;
   }
 };

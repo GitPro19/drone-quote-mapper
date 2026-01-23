@@ -75,9 +75,9 @@ const Quote = {
       return CONFIG.photoPackages;
     }
     return [
-      { id: 'economy', name: 'Economy', description: 'Fewer photos, faster turnaround.', landPhotos: 15, topDownShots: 2, spacingMultiplier: 1.4, altitudeMultiplier: 1.3 },
-      { id: 'standard', name: 'Standard', description: 'Balanced coverage for most properties.', landPhotos: 30, topDownShots: 3, spacingMultiplier: 1.0, altitudeMultiplier: 1.0 },
-      { id: 'premium', name: 'Premium', description: 'Maximum detail with multiple angles.', landPhotos: 50, topDownShots: 4, spacingMultiplier: 0.85, altitudeMultiplier: 0.9 }
+      { id: 'economy', name: 'Economy', description: 'Fewer photos, faster turnaround.', landPhotos: 15, topDownShots: 2, spacingMultiplier: 1.4, altitudeMultiplier: 1.3, includedBuildings: 1 },
+      { id: 'standard', name: 'Standard', description: 'Balanced coverage for most properties.', landPhotos: 30, topDownShots: 3, spacingMultiplier: 1.0, altitudeMultiplier: 1.0, includedBuildings: 2 },
+      { id: 'premium', name: 'Premium', description: 'Maximum detail with multiple angles.', landPhotos: 50, topDownShots: 4, spacingMultiplier: 0.85, altitudeMultiplier: 0.9, includedBuildings: null }
     ];
   },
   getSelectedPackage: () => {
@@ -89,31 +89,134 @@ const Quote = {
   getSelectedPackageOptions: () => {
     const selected = Quote.getSelectedPackage();
     if (!selected) return {};
+    const defaultBuildingLimit = selected.id === 'economy'
+      ? 1
+      : selected.id === 'standard'
+        ? 2
+        : null;
+    const includedBuildings = selected.includedBuildings === undefined
+      ? defaultBuildingLimit
+      : selected.includedBuildings;
     return {
       spacingMultiplier: selected.spacingMultiplier || 1.0,
       altitudeMultiplier: selected.altitudeMultiplier || 1.0,
       landPhotos: selected.landPhotos || 0,
       topDownShots: selected.topDownShots || 0,
+      includedBuildings: includedBuildings,
       packageId: selected.id,
       packageName: selected.name
     };
   },
   getPhotoPlan: (plot) => {
     const packageOptions = Quote.getSelectedPackageOptions();
-    const landPhotos = Math.max(0, Math.round(packageOptions.landPhotos || 0));
-    const topDownShots = Math.max(0, Math.round(packageOptions.topDownShots || 0));
-    const cappedTopDown = Math.min(topDownShots, landPhotos);
-    const angledShots = Math.max(landPhotos - cappedTopDown, 0);
-    let buildingPhotos = 0;
-    if (plot && typeof LandPlotting !== 'undefined' && LandPlotting.getBuildingPhotoCount) {
-      buildingPhotos = LandPlotting.getBuildingPhotoCount(plot);
+    const packageTotal = Math.max(0, Math.round(packageOptions.landPhotos || 0));
+    let topDownTarget = Math.max(0, Math.round(packageOptions.topDownShots || 0));
+    if (plot && plot.area && typeof CoverageCalculator !== 'undefined') {
+      const specs = CONFIG.droneSpecs || {};
+      const altitudeFeet = Number(CONFIG.coverageDefaults?.topDownAltitudeFeet);
+      const topDownAltitudeFeet = Number.isFinite(altitudeFeet) ? altitudeFeet : 400;
+      const topDownAltitudeMeters = topDownAltitudeFeet * 0.3048;
+      const coverage = CoverageCalculator.calculatePhotoCoverage(
+        topDownAltitudeMeters,
+        specs.focalLength,
+        specs.sensorWidth,
+        specs.sensorHeight,
+        specs.imageWidth,
+        specs.imageHeight
+      );
+      const perShotAcres = Number(coverage?.areaAcres);
+      const plotAcres = Number(plot.area.acres);
+      if (Number.isFinite(perShotAcres) && perShotAcres > 0 && Number.isFinite(plotAcres) && plotAcres > 0) {
+        topDownTarget = Math.max(1, Math.ceil(plotAcres / perShotAcres));
+      }
     }
+    if (packageOptions.packageId === 'economy') {
+      topDownTarget = Math.min(topDownTarget, 2);
+    }
+    const includedBuildings = Number.isFinite(packageOptions.includedBuildings)
+      ? Math.max(0, Math.round(packageOptions.includedBuildings))
+      : null;
+    let buildingDemand = 0;
+    if (plot && typeof LandPlotting !== 'undefined' && LandPlotting.getBuildingPhotoCount) {
+      buildingDemand = LandPlotting.getBuildingPhotoCount(plot, includedBuildings, {
+        packageId: packageOptions.packageId
+      });
+    }
+    let landDemand = 0;
+    if (plot && plot.area && typeof CoverageCalculator !== 'undefined') {
+      const specs = CONFIG.droneSpecs || {};
+      const altitudeMultiplier = Number.isFinite(packageOptions.altitudeMultiplier) && packageOptions.altitudeMultiplier > 0
+        ? packageOptions.altitudeMultiplier
+        : 1.0;
+      const spacingMultiplier = Number.isFinite(packageOptions.spacingMultiplier) && packageOptions.spacingMultiplier > 0
+        ? packageOptions.spacingMultiplier
+        : 1.0;
+      const altitude = (specs.defaultAltitude || 60) * altitudeMultiplier;
+      const coverage = CoverageCalculator.calculatePhotoCoverage(
+        altitude,
+        specs.focalLength,
+        specs.sensorWidth,
+        specs.sensorHeight,
+        specs.imageWidth,
+        specs.imageHeight
+      );
+      if (coverage && coverage.area > 0) {
+        const frontOverlap = Number.isFinite(CONFIG.coverageDefaults?.frontOverlap)
+          ? CONFIG.coverageDefaults.frontOverlap
+          : 70;
+        const sideOverlap = Number.isFinite(CONFIG.coverageDefaults?.sideOverlap)
+          ? CONFIG.coverageDefaults.sideOverlap
+          : 60;
+        const spacing = CoverageCalculator.calculatePhotoSpacing(
+          coverage,
+          frontOverlap,
+          sideOverlap
+        );
+        if (spacing && spacing.front > 0 && spacing.side > 0) {
+          spacing.front *= spacingMultiplier;
+          spacing.side *= spacingMultiplier;
+          const photosNeeded = CoverageCalculator.calculatePhotosNeeded(
+            plot.area.sqmeters || 0,
+            coverage,
+            spacing
+          );
+          landDemand = Math.max(0, Math.round(photosNeeded?.recommended || 0));
+        }
+      }
+    }
+    if (!Number.isFinite(landDemand) || landDemand <= 0) {
+      landDemand = packageTotal;
+    }
+    if (!Number.isFinite(buildingDemand) || buildingDemand < 0) {
+      buildingDemand = 0;
+    }
+    let buildingPhotos = 0;
+    let landPhotos = packageTotal;
+    const totalDemand = landDemand + buildingDemand;
+    if (packageTotal > 0) {
+      if (packageOptions.packageId === 'economy' && buildingDemand > 0) {
+        buildingPhotos = Math.min(buildingDemand, packageTotal);
+        landPhotos = packageTotal - buildingPhotos;
+      } else if (totalDemand > 0) {
+        const rawBuildingShare = Math.round(packageTotal * (buildingDemand / totalDemand));
+        buildingPhotos = Math.min(buildingDemand, Math.max(0, rawBuildingShare));
+        landPhotos = packageTotal - buildingPhotos;
+      }
+    }
+    if (topDownTarget > 0 && landPhotos < topDownTarget && buildingPhotos > 0) {
+      const shift = Math.min(topDownTarget - landPhotos, buildingPhotos);
+      landPhotos += shift;
+      buildingPhotos -= shift;
+    }
+    const topDownShots = Math.min(topDownTarget, landPhotos);
+    const angledShots = Math.max(landPhotos - topDownShots, 0);
     return {
       landPhotos,
-      topDownShots: cappedTopDown,
+      topDownShots,
       angledShots,
       buildingPhotos,
-      totalPhotos: landPhotos + buildingPhotos,
+      includedBuildings,
+      totalPhotos: packageTotal,
       packageId: packageOptions.packageId,
       packageName: packageOptions.packageName
     };
@@ -139,6 +242,25 @@ const Quote = {
     if (topDownEl) topDownEl.textContent = plan.topDownShots.toLocaleString();
     if (angledEl) angledEl.textContent = plan.angledShots.toLocaleString();
     if (buildingEl) buildingEl.textContent = plan.buildingPhotos.toLocaleString();
+  },
+  updatePackageLegend: () => {
+    const legend = document.getElementById('packageTotalsLegend');
+    if (!legend) return;
+    const packages = Quote.getPhotoPackages();
+    if (!packages || packages.length === 0) {
+      legend.textContent = 'No packages available';
+      return;
+    }
+    legend.innerHTML = packages.map(pkg => {
+      const total = Math.max(0, Math.round(pkg.landPhotos || 0));
+      const name = Utils.escapeHtml(pkg.name || pkg.id || 'Package');
+      return `
+        <div class="legend-item legend-item-split">
+          <span class="legend-package">${name}</span>
+          <span class="legend-count">${total} photos</span>
+        </div>
+      `;
+    }).join('');
   },
   populatePackages: () => {
     const selector = document.getElementById('packageSelector');
@@ -198,6 +320,7 @@ const Quote = {
     });
     
     Quote.updatePackageHint();
+    Quote.updatePackageLegend();
   },
   updatePackageHint: () => {
     const hint = document.getElementById('quotePackageHint');
@@ -493,12 +616,18 @@ const Quote = {
       return;
     }
 
-    const totalPhotos = photoPlan.totalPhotos || result.photos.recommended;
+    const totalPhotos = Number.isFinite(photoPlan?.totalPhotos)
+      ? photoPlan.totalPhotos
+      : result.photos.recommended;
     result.photos.total = totalPhotos;
-    result.photos.land = photoPlan.landPhotos || result.photos.recommended;
-    result.photos.building = photoPlan.buildingPhotos;
-    result.photos.topDown = photoPlan.topDownShots;
-    result.photos.angled = photoPlan.angledShots;
+    result.photos.land = Number.isFinite(photoPlan?.landPhotos)
+      ? photoPlan.landPhotos
+      : result.photos.recommended;
+    result.photos.building = Number.isFinite(photoPlan?.buildingPhotos) ? photoPlan.buildingPhotos : 0;
+    result.photos.topDown = Number.isFinite(photoPlan?.topDownShots) ? photoPlan.topDownShots : 0;
+    result.photos.angled = Number.isFinite(photoPlan?.angledShots)
+      ? photoPlan.angledShots
+      : Math.max(result.photos.land - result.photos.topDown, 0);
     result.flightTime = CoverageCalculator.calculateFlightTime(totalPhotos, 2);
     if (result.flightPath) {
       result.flightPath.landPhotos = result.photos.land;
@@ -508,8 +637,16 @@ const Quote = {
       result.flightPath.totalPhotos = totalPhotos;
       result.flightPath.packageId = packageOptions.packageId || null;
       result.flightPath.packageName = packageOptions.packageName || null;
+      if (typeof LandPlotting !== 'undefined' && LandPlotting.getPropertyOrbit) {
+        result.flightPath.propertyOrbit = LandPlotting.getPropertyOrbit(activePlot, photoPlan.angledShots);
+      }
       if (typeof LandPlotting !== 'undefined' && LandPlotting.getBuildingOrbits) {
-        result.flightPath.orbits = LandPlotting.getBuildingOrbits(activePlot);
+        result.flightPath.orbits = LandPlotting.getBuildingOrbits(
+          activePlot,
+          photoPlan.includedBuildings,
+          photoPlan.buildingPhotos,
+          { packageId: packageOptions.packageId }
+        );
       }
       
       // Add angle information to shot points
@@ -586,9 +723,6 @@ const Quote = {
     if (result.flightPath && typeof MapManager.updateFlightPath === 'function') {
       MapManager.updateFlightPath(result.flightPath);
     }
-    
-    // Update shot predictions display
-    Quote.updateShotPredictions(result.flightPath, activePlot);
     
     // Update quote form price and display
     Quote.calculatePrice();
