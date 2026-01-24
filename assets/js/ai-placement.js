@@ -74,10 +74,21 @@ const AIPlacement = {
             }
         } catch (error) {
             console.error('AI Analysis flow error:', error);
-            AIPlacement.showErrorMessage();
+            AIPlacement.showErrorMessage('AI Analysis Error', 'An unexpected error occurred during analysis. Check console for details.');
             AIPlacement.showLoadingState(false);
         } finally {
             AIPlacement.isAnalyzing = false;
+        }
+    },
+
+    initManualTrigger: () => {
+        const btn = document.getElementById('rerunAI');
+        if (btn) {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('Manual AI trigger clicked');
+                AIPlacement.analyzeProperty();
+            });
         }
     },
 
@@ -237,6 +248,8 @@ const AIPlacement = {
         const txt = document.getElementById('aiProgressText');
         if (bar) bar.style.width = percent + '%';
         if (txt) txt.textContent = text;
+        const icon = document.querySelector('#aiMapOverlay .spinner');
+        if (icon) icon.style.display = percent === 100 ? 'none' : 'inline-block';
     },
 
     showLoadingState: (isLoading) => {
@@ -244,21 +257,58 @@ const AIPlacement = {
         const oldStatus = document.getElementById('aiStatus');
 
         if (isLoading) {
-            if (overlay) overlay.classList.remove('ai-overlay-hidden');
+            if (overlay) {
+                overlay.classList.remove('ai-overlay-hidden');
+                overlay.querySelector('.ai-card').style.borderColor = 'var(--primary)';
+            }
             if (oldStatus) oldStatus.classList.remove('hidden');
             AIPlacement.updateProgress(0, 'Waking up local AI...');
         } else {
-            if (overlay) overlay.classList.add('ai-overlay-hidden');
-            if (oldStatus) oldStatus.classList.add('hidden');
+            // Only hide if analyzeProperty finished normally
+            if (!AIPlacement.isAnalyzing) {
+                if (overlay) overlay.classList.add('ai-overlay-hidden');
+                if (oldStatus) oldStatus.classList.add('hidden');
+            }
         }
     },
 
     showSuccessMessage: (msg) => {
-        // Show toast or alert
-        alert('AI Analysis Complete!\n\n' + msg);
+        console.log('AI Success:', msg);
+        // We can show a toast here in future
     },
 
-    showErrorMessage: () => {
-        console.log('AI placement failed silently');
+    showErrorMessage: (title = 'AI Connection Failed', detail = 'Make sure LM Studio is running on 192.168.50.67:1234 and CORS is enabled.') => {
+        const overlay = document.getElementById('aiMapOverlay');
+        const bar = document.getElementById('aiProgressBar');
+        const txt = document.getElementById('aiProgressText');
+        const header = document.querySelector('#aiMapOverlay strong');
+        const card = document.querySelector('#aiMapOverlay .ai-card');
+
+        if (overlay) {
+            overlay.classList.remove('ai-overlay-hidden');
+            if (header) header.textContent = title;
+            if (txt) txt.textContent = detail;
+            if (bar) {
+                bar.style.width = '100%';
+                bar.style.backgroundColor = 'var(--danger)';
+            }
+            if (card) card.style.borderColor = 'var(--danger)';
+
+            // Auto hide error after 8 seconds
+            setTimeout(() => {
+                if (!AIPlacement.isAnalyzing) {
+                    overlay.classList.add('ai-overlay-hidden');
+                    // Reset styling
+                    if (header) header.textContent = 'AI Analysis in Progress';
+                    if (bar) bar.style.backgroundColor = 'var(--primary)';
+                    if (card) card.style.borderColor = 'var(--primary)';
+                }
+            }, 8000);
+        }
     }
 };
+
+// Initialize manual trigger when script loads
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(AIPlacement.initManualTrigger, 1000);
+});
