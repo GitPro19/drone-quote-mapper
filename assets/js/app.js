@@ -3,7 +3,7 @@ window.addEventListener('load', () => {
   console.log('Window loaded, initializing app...');
   console.log('L available:', typeof L !== 'undefined');
   console.log('CONFIG available:', typeof CONFIG !== 'undefined');
-  
+
   // Give it a moment for all scripts to execute
   setTimeout(() => {
     App.init();
@@ -22,7 +22,7 @@ const App = {
     Quote.init();
     MapManager.init();
   },
-  
+
   setupTabs: () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -34,14 +34,14 @@ const App = {
       });
     });
   },
-  
+
   setupEmbedMode: () => {
     const params = new URLSearchParams(window.location.search);
     if (params.has('embed')) {
       document.body.classList.add('embed-mode');
     }
   },
-  
+
   setupExportImport: () => {
     const exportBtn = document.getElementById('exportData');
     const importBtn = document.getElementById('importData');
@@ -62,11 +62,11 @@ const App = {
         alert('Export failed. Please try again.');
       }
     });
-    
+
     importBtn.addEventListener('click', () => {
       importFile.click();
     });
-    
+
     importFile.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -85,23 +85,23 @@ const App = {
       reader.readAsText(file);
     });
   },
-  
+
   setupSettings: () => {
     document.getElementById('saveSettings').addEventListener('click', () => {
       // Map settings
       CONFIG.defaultCenter.lat = parseFloat(document.getElementById('defaultLat').value);
       CONFIG.defaultCenter.lng = parseFloat(document.getElementById('defaultLng').value);
       CONFIG.defaultZoom = parseInt(document.getElementById('defaultZoom').value);
-      
+
       // Company settings
       CONFIG.company.name = document.getElementById('companyName').value;
-      
+
       // Pricing settings
       CONFIG.pricing.basePricePerAcre = parseFloat(document.getElementById('basePricePerAcre').value);
       CONFIG.pricing.photoProcessingCost = parseFloat(document.getElementById('photoProcessingCost').value);
       CONFIG.pricing.photoMultiplier = parseFloat(document.getElementById('photoMultiplier').value);
       CONFIG.pricing.minimumPrice = parseFloat(document.getElementById('minimumPrice').value);
-      
+
       // Drone specs
       CONFIG.droneSpecs.model = document.getElementById('droneModel').value;
       CONFIG.droneSpecs.sensorWidth = parseFloat(document.getElementById('sensorWidth').value);
@@ -111,7 +111,7 @@ const App = {
       CONFIG.droneSpecs.imageHeight = parseInt(document.getElementById('imageHeight').value);
       CONFIG.droneSpecs.maxAltitude = parseInt(document.getElementById('maxAltitude').value);
       CONFIG.droneSpecs.defaultAltitude = parseInt(document.getElementById('defaultAltitude').value);
-      
+
       // Coverage defaults
       CONFIG.coverageDefaults.frontOverlap = parseInt(document.getElementById('defaultFrontOverlap').value);
       CONFIG.coverageDefaults.sideOverlap = parseInt(document.getElementById('defaultSideOverlap').value);
@@ -123,14 +123,14 @@ const App = {
       CONFIG.flightPathDefaults.propertyOrbitOffsetMeters = Number.isFinite(propertyOrbitOffset)
         ? Math.max(0, propertyOrbitOffset)
         : 10;
-      
+
       saveConfig();
       if (typeof MapManager !== 'undefined' && MapManager.refreshFlightPath) {
         MapManager.refreshFlightPath();
       }
       alert('Settings saved!');
     });
-    
+
     // Load current settings into form
     document.getElementById('defaultLat').value = CONFIG.defaultCenter.lat;
     document.getElementById('defaultLng').value = CONFIG.defaultCenter.lng;
@@ -140,7 +140,7 @@ const App = {
     document.getElementById('photoProcessingCost').value = CONFIG.pricing.photoProcessingCost || 0.50;
     document.getElementById('photoMultiplier').value = CONFIG.pricing.photoMultiplier || 1.0;
     document.getElementById('minimumPrice').value = CONFIG.pricing.minimumPrice;
-    
+
     document.getElementById('droneModel').value = CONFIG.droneSpecs?.model || 'DJI Mini 3';
     document.getElementById('sensorWidth').value = CONFIG.droneSpecs?.sensorWidth || 15.7;
     document.getElementById('sensorHeight').value = CONFIG.droneSpecs?.sensorHeight || 10.5;
@@ -149,11 +149,36 @@ const App = {
     document.getElementById('imageHeight').value = CONFIG.droneSpecs?.imageHeight || 3000;
     document.getElementById('maxAltitude').value = CONFIG.droneSpecs?.maxAltitude || 120;
     document.getElementById('defaultAltitude').value = CONFIG.droneSpecs?.defaultAltitude || 60;
-    
+
     document.getElementById('defaultFrontOverlap').value = CONFIG.coverageDefaults?.frontOverlap || 70;
     document.getElementById('defaultSideOverlap').value = CONFIG.coverageDefaults?.sideOverlap || 60;
     document.getElementById('targetGSD').value = CONFIG.coverageDefaults?.targetGSD || 2.5;
     const orbitOffset = Number(CONFIG.flightPathDefaults?.propertyOrbitOffsetMeters);
     document.getElementById('propertyOrbitOffsetMeters').value = Number.isFinite(orbitOffset) ? orbitOffset : 10;
+
+    // AI Connection Test
+    const testBtn = document.getElementById('testAIConnection');
+    if (testBtn) {
+      testBtn.addEventListener('click', async () => {
+        if (typeof AIPlacement === 'undefined') {
+          alert('AI Module not loaded');
+          return;
+        }
+
+        testBtn.textContent = 'Testing...';
+        testBtn.disabled = true;
+
+        const isAvailable = await AIPlacement.checkServiceAvailability();
+
+        testBtn.disabled = false;
+        testBtn.textContent = 'Test Connection';
+
+        if (isAvailable) {
+          alert('Success! Connected to local AI server.');
+        } else {
+          alert('Connection failed. Please check:\n1. LM Studio is running\n2. Server is started\n3. CORS is enabled in LM Studio\n4. IP address is correct');
+        }
+      });
+    }
   }
 };

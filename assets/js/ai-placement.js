@@ -3,7 +3,7 @@ const AIPlacement = {
 
     // Configuration for local AI service (LM Studio / Ollama)
     config: {
-        apiUrl: 'http://localhost:1234/v1/chat/completions',
+        apiUrl: 'http://192.168.50.67:1234/v1/chat/completions',
         model: 'llava-v1.5-7b', // Default to standard LLaVA model name
         temperature: 0.1,
         maxTokens: 500
@@ -11,36 +11,73 @@ const AIPlacement = {
 
     // Main entry point - triggered after obstacles map is finished
     analyzeProperty: async () => {
-        if (AIPlacement.isAnalyzing) return;
-
-        // Check if AI service is available
-        const isAvailable = await AIPlacement.checkServiceAvailability();
-        if (!isAvailable) {
-            console.log('Local AI service not detected. Skipping AI placement.');
+        console.log('AIPlacement.analyzeProperty called');
+        if (AIPlacement.isAnalyzing) {
+            console.log('AI analysis already in progress, skipping');
             return;
         }
 
         AIPlacement.isAnalyzing = true;
         AIPlacement.showLoadingState(true);
+        AIPlacement.updateProgress(5, 'Connecting to local AI...');
+
+        // Check if AI service is available
+        console.log('Checking AI service availability...');
+        const isAvailable = await AIPlacement.checkServiceAvailability();
+        if (!isAvailable) {
+            console.warn('Local AI service not detected. Skipping AI placement.');
+            AIPlacement.showLoadingState(false);
+            return;
+        }
+
+        console.log('Starting AI analysis flow...');
+        AIPlacement.updateProgress(10, 'Initializing AI vision...');
 
         try {
             // 1. Capture map image
-            const mapImage = await AIPlacement.captureMapImage();
+            AIPlacement.updateProgress(25, 'Capturing map coordinates...');
+            const mapData = await AIPlacement.captureMapImage();
+            console.log('Map data captured, type:', mapData.type);
 
             // 2. Send to AI for analysis
-            const analysis = await AIPlacement.askAI(mapImage);
+            AIPlacement.updateProgress(40, 'Analyzing property features...');
+            console.log('Querying AI model:', AIPlacement.config.model);
+
+            // Simulate gradual local inference progress since we can't get real-time stream easily
+            const progressInterval = setInterval(() => {
+                const bar = document.getElementById('aiProgressBar');
+                const current = bar ? parseInt(bar.style.width || '40') : 40;
+                if (current < 90) {
+                    AIPlacement.updateProgress(current + 2, 'Local AI is thinking...');
+                }
+            }, 800);
+
+            const analysis = await AIPlacement.askAI(mapData);
+            clearInterval(progressInterval);
+            console.log('AI response received:', analysis);
 
             // 3. Apply suggestions
             if (analysis && analysis.suggestions) {
+                console.log('Applying', analysis.suggestions.length, 'AI suggestions');
+                AIPlacement.updateProgress(95, 'Plotting vantage points...');
                 AIPlacement.applySuggestions(analysis.suggestions);
-                AIPlacement.showSuccessMessage(analysis.reasoning);
+                AIPlacement.updateProgress(100, 'Analysis complete!');
+
+                // Keep progress at 100 for a moment before hiding
+                setTimeout(() => {
+                    AIPlacement.showLoadingState(false);
+                    AIPlacement.showSuccessMessage(analysis.reasoning);
+                }, 1000);
+            } else {
+                console.warn('AI analysis returned no suggestions or invalid JSON');
+                AIPlacement.showLoadingState(false);
             }
         } catch (error) {
-            console.error('AI Analysis failed:', error);
+            console.error('AI Analysis flow error:', error);
             AIPlacement.showErrorMessage();
+            AIPlacement.showLoadingState(false);
         } finally {
             AIPlacement.isAnalyzing = false;
-            AIPlacement.showLoadingState(false);
         }
     },
 
@@ -48,7 +85,7 @@ const AIPlacement = {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
-            const response = await fetch('http://localhost:1234/v1/models', {
+            const response = await fetch('http://192.168.50.67:1234/v1/models', {
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -59,46 +96,109 @@ const AIPlacement = {
     },
 
     captureMapImage: async () => {
-        // Implementation depends on map library (Leaflet)
-        // For now, simpler approach: we send a prompt describing the geometry
-        // In future: use html2canvas or leaflet-image to get actual visual
+        return new Promise((resolve, reject) => {
+            if (typeof leafletImage === 'undefined') {
+                console.warn('leaflet-image library not loaded, falling back to coordinate mode.');
+                const plot = LandPlotting.getLatestPlot();
+                resolve({ type: 'text', data: JSON.stringify(plot) });
+                return;
+            }
 
-        // For this prototype, we'll send the geometry data as JSON text
-        // as passing images to LLaVA via API can be tricky without correct format
-        const plot = LandPlotting.getLatestPlot();
-        return JSON.stringify(plot);
+            // Temporarily hide UI elements that shouldn't be analyzed
+            const controls = document.querySelectorAll('.leaflet-control-container, .plotting-marker-label, .distance-label');
+            controls.forEach(el => el.style.opacity = '0');
+
+            leafletImage(MapManager.map, function (err, canvas) {
+                // Restore UI
+                controls.forEach(el => el.style.opacity = '1');
+
+                if (err) {
+                    console.error('Map capture error:', err);
+                    const plot = LandPlotting.getLatestPlot();
+                    resolve({ type: 'text', data: JSON.stringify(plot) });
+                    return;
+                }
+
+                // Compress image to avoid token limits
+                // Resize canvas to reasonable dimension for LLaVA (e.g. 512x512 max)
+                const MAX_DIM = 512;
+                let w = canvas.width;
+                let h = canvas.height;
+                if (w > MAX_DIM || h > MAX_DIM) {
+                    const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
+                    w *= ratio;
+                    h *= ratio;
+                }
+
+                const resizedCanvas = document.createElement('canvas');
+                resizedCanvas.width = w;
+                resizedCanvas.height = h;
+                const ctx = resizedCanvas.getContext('2d');
+                ctx.drawImage(canvas, 0, 0, w, h);
+
+                const dataUrl = resizedCanvas.toDataURL('image/jpeg', 0.8);
+                // Remove prefix for API usage
+                const base64Image = dataUrl.split(',')[1];
+
+                console.log('Map captured as image for AI analysis');
+                resolve({ type: 'image', data: base64Image });
+            });
+        });
     },
 
     askAI: async (plotData) => {
         try {
             // Construct prompt for LLaVA
-            const prompt = `
-        You are an expert drone flight planner. I will provide you with coordinates of a property and its buildings.
+            const promptText = `
+        You are an expert drone flight planner. You are looking at a satellite map of a property.
+        The property boundary is marked.
         Your goal is to suggest the optimal "Angle of Interest" shots for a real estate marketing video.
         
-        Property Data: ${plotData}
-        
-        Analyze the geometry and suggest 3-5 key vantage points.
+        Analyze the VISUAL features of the map (pool, driveway, gardens, interesting rooflines) and suggest 3 key vantage points.
         Return ONLY valid JSON in this format:
         {
-          "reasoning": "Brief explanation of strategy",
+          "reasoning": "Brief explanation of visual features seen",
           "suggestions": [
-            { "lat": 12.34, "lng": -56.78, "description": "Front facade shot" }
+            { "lat": 12.34, "lng": -56.78, "description": "Pool area shot" }
           ]
         }
       `;
 
+            const payload = {
+                model: AIPlacement.config.model,
+                messages: [
+                    {
+                        role: "system",
+                        content: "You are a helpful AI drone pilot assistant."
+                    },
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: promptText }
+                        ]
+                    }
+                ],
+                temperature: 0.1,
+                max_tokens: 500 // Correct parameter name
+            };
+
+            // Add image or text data
+            if (plotData.type === 'image') {
+                payload.messages[1].content.push({
+                    type: "image_url",
+                    image_url: {
+                        url: `data:image/jpeg;base64,${plotData.data}`
+                    }
+                });
+            } else {
+                // Fallback to text prompt
+                payload.messages[1].content[0].text += `\n\nProperty Geometry Data: ${plotData.data}`;
+            }
+
             const response = await fetch(AIPlacement.config.apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: AIPlacement.config.model,
-                    messages: [
-                        { role: "system", content: "You are a helpful AI drone pilot assistant." },
-                        { role: "user", content: prompt }
-                    ],
-                    temperature: 0.1
-                })
+                body: JSON.stringify(payload)
             });
 
             const data = await response.json();
@@ -132,15 +232,24 @@ const AIPlacement = {
         console.log(`Applied ${suggestions.length} AI suggestions`);
     },
 
+    updateProgress: (percent, text) => {
+        const bar = document.getElementById('aiProgressBar');
+        const txt = document.getElementById('aiProgressText');
+        if (bar) bar.style.width = percent + '%';
+        if (txt) txt.textContent = text;
+    },
+
     showLoadingState: (isLoading) => {
-        const statusEl = document.getElementById('aiStatus');
-        if (!statusEl) return; // Need to add this element to HTML
+        const overlay = document.getElementById('aiMapOverlay');
+        const oldStatus = document.getElementById('aiStatus');
 
         if (isLoading) {
-            statusEl.classList.remove('hidden');
-            statusEl.innerHTML = '<span class="spinner"></span> AI Analysis in Progress...';
+            if (overlay) overlay.classList.remove('ai-overlay-hidden');
+            if (oldStatus) oldStatus.classList.remove('hidden');
+            AIPlacement.updateProgress(0, 'Waking up local AI...');
         } else {
-            statusEl.classList.add('hidden');
+            if (overlay) overlay.classList.add('ai-overlay-hidden');
+            if (oldStatus) oldStatus.classList.add('hidden');
         }
     },
 

@@ -1,5 +1,9 @@
 /* Modern Design System - Complete Overhaul */
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
 :root {
   --primary: #10b981;
@@ -9,40 +13,44 @@
   --warning: #f59e0b;
   --danger: #ef4444;
   --info: #3b82f6;
-  
+
   --bg-primary: #1a1a1a;
   --bg-secondary: #2d2d2d;
   --bg-tertiary: #252525;
   --bg-card: #2d2d2d;
-  
+
   --text-primary: #ffffff;
   --text-secondary: #e0e0e0;
   --text-tertiary: #a0a0a0;
   --text-muted: #666;
-  
+
   --border: #444;
   --border-light: #555;
-  
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
-  --shadow-lg: 0 10px 15px rgba(0,0,0,0.5);
-  
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+
   --radius: 8px;
   --radius-sm: 4px;
   --radius-lg: 12px;
 }
 
-html, body { 
-  height: 100%; 
+html,
+body {
+  height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: var(--bg-primary);
   color: var(--text-secondary);
   font-size: 16px;
   line-height: 1.6;
-  overflow: hidden; /* No page-level scrollbar */
+  overflow: hidden;
+  /* No page-level scrollbar */
 }
 
-.is-hidden { display: none !important; }
+.is-hidden {
+  display: none !important;
+}
 
 /* Header */
 .app-header {
@@ -700,6 +708,52 @@ html, body {
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
+/* Economy Package Styling */
+.package-card[data-package="economy"] {
+  border-top: 4px solid var(--success);
+}
+
+.package-card[data-package="economy"].selected {
+  border-color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.package-card[data-package="economy"] .package-card-name {
+  color: var(--success);
+}
+
+/* Standard Package Styling */
+.package-card[data-package="standard"] {
+  border-top: 4px solid var(--info);
+}
+
+.package-card[data-package="standard"].selected {
+  border-color: var(--info);
+  background: rgba(59, 130, 246, 0.1);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+}
+
+.package-card[data-package="standard"] .package-card-name {
+  color: var(--info);
+}
+
+/* Premium Package Styling */
+.package-card[data-package="premium"] {
+  border-top: 4px solid #a855f7;
+  /* Purple */
+}
+
+.package-card[data-package="premium"].selected {
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25);
+}
+
+.package-card[data-package="premium"] .package-card-name {
+  color: #a855f7;
+}
+
 .package-card.popular::before {
   content: 'Most Popular';
   position: absolute;
@@ -876,7 +930,7 @@ html, body {
 }
 
 .legend-dot-angled {
-  background: #0ea5e9;
+  background: #d946ef;
 }
 
 .legend-dot-building {
@@ -904,19 +958,22 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid white;
+  border: 2px solid rgba(255, 255, 255, 0.8);
   box-shadow: var(--shadow-md);
   transition: transform 0.2s;
+  opacity: 0.65;
 }
 
 .plotting-marker:hover .plotting-marker-inner {
   transform: scale(1.1);
+  opacity: 0.9;
 }
 
 .plotting-marker-label {
   color: white;
   font-weight: 600;
   font-size: 0.75rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .plotting-marker.start .plotting-marker-inner {
@@ -929,8 +986,15 @@ html, body {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .distance-label-text {
@@ -963,11 +1027,25 @@ html, body {
   letter-spacing: 0.02em;
 }
 
-.obstacle-marker-inner.obstacle-marker-house { background: #ef4444; }
-.obstacle-marker-inner.obstacle-marker-garage { background: #f59e0b; }
-.obstacle-marker-inner.obstacle-marker-shed { background: #3b82f6; }
-.obstacle-marker-inner.obstacle-marker-barn { background: #8b5cf6; }
-.obstacle-marker-inner.obstacle-marker-dock { background: #14b8a6; }
+.obstacle-marker-inner.obstacle-marker-house {
+  background: #ef4444;
+}
+
+.obstacle-marker-inner.obstacle-marker-garage {
+  background: #f59e0b;
+}
+
+.obstacle-marker-inner.obstacle-marker-shed {
+  background: #3b82f6;
+}
+
+.obstacle-marker-inner.obstacle-marker-barn {
+  background: #8b5cf6;
+}
+
+.obstacle-marker-inner.obstacle-marker-dock {
+  background: #14b8a6;
+}
 
 /* POI Markers */
 .poi-panel {
@@ -995,14 +1073,37 @@ html, body {
   letter-spacing: 0.02em;
 }
 
-.poi-marker-inner.poi-marker-garden { background: #10b981; }
-.poi-marker-inner.poi-marker-pool { background: #38bdf8; }
-.poi-marker-inner.poi-marker-pond { background: #0ea5e9; }
-.poi-marker-inner.poi-marker-river { background: #2563eb; }
-.poi-marker-inner.poi-marker-driveway { background: #f59e0b; }
-.poi-marker-inner.poi-marker-viewpoint { background: #a855f7; }
-.poi-marker-inner.poi-marker-trail { background: #22c55e; }
-.poi-marker-inner.poi-marker-other { background: #6b7280; }
+.poi-marker-inner.poi-marker-garden {
+  background: #10b981;
+}
+
+.poi-marker-inner.poi-marker-pool {
+  background: #38bdf8;
+}
+
+.poi-marker-inner.poi-marker-pond {
+  background: #0ea5e9;
+}
+
+.poi-marker-inner.poi-marker-river {
+  background: #2563eb;
+}
+
+.poi-marker-inner.poi-marker-driveway {
+  background: #f59e0b;
+}
+
+.poi-marker-inner.poi-marker-viewpoint {
+  background: #a855f7;
+}
+
+.poi-marker-inner.poi-marker-trail {
+  background: #22c55e;
+}
+
+.poi-marker-inner.poi-marker-other {
+  background: #6b7280;
+}
 
 #markPoi[data-active="true"] {
   background: #0ea5e9;
@@ -1359,44 +1460,44 @@ html, body {
   .main-content {
     flex-direction: column;
   }
-  
+
   .workflow-panel {
     width: 100%;
     height: 40vh;
     border-left: none;
     border-top: 1px solid var(--border);
   }
-  
+
   .map-area {
     height: 60vh;
   }
-  
+
   .floating-controls {
     top: 0.5rem;
     left: 0.5rem;
   }
-  
+
   .map-controls {
     top: 0.5rem;
     right: 0.5rem;
     flex-direction: row;
     flex-wrap: wrap;
   }
-  
+
   .measurement-card {
     bottom: 0.5rem;
     left: 0.5rem;
     padding: 1rem;
   }
-  
+
   .measurement-value {
     font-size: 1.5rem;
   }
-  
+
   .package-selector {
     grid-template-columns: 1fr;
   }
-  
+
   .package-card {
     max-width: 100%;
   }

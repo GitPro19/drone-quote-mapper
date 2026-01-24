@@ -604,14 +604,55 @@ const MapManager = {
 
     const shotPoints = Array.isArray(flightPath.shotPoints) ? flightPath.shotPoints : [];
     // Show all property shots (both top-down and angled)
-    shotPoints.forEach((shot) => {
-      // Determine style based on shot type
-      const isTopDown = shot.type === 'top-down';
-      const color = isTopDown ? '#38bdf8' : '#0ea5e9'; // Light blue for top-down, darker for angled
-      const radius = isTopDown ? 6 : 5;
+    if (isTopDown) {
+      // Draw footprint rectangle for top-down shots
+      // Calculate footprint size in meters
+      const altitude = flightPath.altitude || CONFIG.droneSpecs.defaultAltitude || 60;
+      const coverage = typeof CoverageCalculator !== 'undefined'
+        ? CoverageCalculator.calculatePhotoCoverage(
+          altitude,
+          CONFIG.droneSpecs.focalLength,
+          CONFIG.droneSpecs.sensorWidth,
+          CONFIG.droneSpecs.sensorHeight,
+          CONFIG.droneSpecs.imageWidth,
+          CONFIG.droneSpecs.imageHeight
+        )
+        : { width: 80, height: 60 }; // Fallback
 
+      // Create rectangle centered at shot.lat, shot.lng
+      // 1 degree lat ~ 111320 meters
+      const latOffset = (coverage.height / 2) / 111320;
+      const lngOffset = (coverage.width / 2) / (111320 * Math.cos(shot.lat * Math.PI / 180));
+
+      const bounds = [
+        [shot.lat - latOffset, shot.lng - lngOffset],
+        [shot.lat + latOffset, shot.lng + lngOffset]
+      ];
+
+      const footprint = L.rectangle(bounds, {
+        color: '#38bdf8',
+        weight: 1,
+        opacity: 0.5,
+        fillColor: '#38bdf8',
+        fillOpacity: 0.25, // Increased shading for visibility
+        pane: 'flightPath'
+      });
+
+      // Add tooltip
+      footprint.bindTooltip('Top-Down Mapping Shot', {
+        direction: 'center',
+        className: 'shot-tooltip'
+      });
+
+      MapManager.flightPathLayer.addLayer(footprint);
+
+    } else {
+      // Angled shots (Property Perimeter)
+      let color = isAI ? '#a855f7' : '#d946ef';
+
+      // Draw camera point
       const marker = L.circleMarker([shot.lat, shot.lng], {
-        radius: radius,
+        radius: 5,
         fillColor: color,
         color: '#0f172a', // Dark border
         weight: 2,
@@ -620,9 +661,8 @@ const MapManager = {
         pane: 'flightPath'
       });
 
-      // Add tooltip to identify shot type
-      const typeLabel = isTopDown ? 'Top-Down Shot' : 'Angled Property Shot';
-      const angleLabel = shot.cameraAngle ? `${shot.cameraAngle.pitch}°` : (isTopDown ? '90°' : '50°');
+      const typeLabel = isAI ? 'AI Suggested Shot' : 'Angled Property Shot';
+      const angleLabel = shot.cameraAngle ? `${shot.cameraAngle.pitch}°` : '50°';
 
       marker.bindTooltip(`${typeLabel} (${angleLabel})`, {
         direction: 'top',
@@ -631,7 +671,42 @@ const MapManager = {
       });
 
       MapManager.flightPathLayer.addLayer(marker);
-    });
+
+      // Draw View Cone (Triangle) if bearing is available
+      if (Number.isFinite(shot.compassBearing)) {
+        const bearing = shot.compassBearing;
+        const coneLength = 30; // meters visualization length
+        const fovRaw = 80; // approximate horizontal FOV degree
+        const halfFov = fovRaw / 2;
+
+        // Helper to get destination point given distance and bearing
+        const toRad = Math.PI / 180;
+        const toDeg = 180 / Math.PI;
+        const R = 6371e3; // Earth radius
+
+        const getDest = (lat, lng, brng, dist) => {
+          const φ1 = lat * toRad;
+          const λ1 = lng * toRad;
+          const θ = brng * toRad;
+          const φ2 = Math.asin(Math.sin(φ1) * Math.cos(dist / R) + Math.cos(φ1) * Math.sin(dist / R) * Math.cos(θ));
+          const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(dist / R) * Math.cos(φ1), Math.cos(dist / R) - Math.sin(φ1) * Math.sin(φ2));
+          return [φ2 * toDeg, λ2 * toDeg];
+        };
+
+        const p1 = [shot.lat, shot.lng];
+        const p2 = getDest(shot.lat, shot.lng, bearing - halfFov, coneLength);
+        const p3 = getDest(shot.lat, shot.lng, bearing + halfFov, coneLength);
+
+        const cone = L.polygon([p1, p2, p3], {
+          color: color,
+          weight: 0,
+          fillColor: color,
+          fillOpacity: 0.35,
+          pane: 'flightPath'
+        });
+        MapManager.flightPathLayer.addLayer(cone);
+      }
+    }
 
     let propertyOrbit = flightPath.propertyOrbit;
     if (typeof LandPlotting !== 'undefined' && LandPlotting.getPropertyOrbit) {
@@ -665,7 +740,7 @@ const MapManager = {
       propertyOrbit.points.forEach((point) => {
         const marker = L.circleMarker([point[0], point[1]], {
           radius: 6,
-          fillColor: '#0ea5e9',
+          fillColor: '#f59e0b', // Amber for property orbit
           color: '#0f172a',
           weight: 2,
           opacity: 1,
@@ -709,6 +784,52 @@ const MapManager = {
             pane: 'flightPath'
           });
           MapManager.flightPathLayer.addLayer(angleLine);
+
+          // Draw View Cone for Building shots
+          if (shot.fieldOfView && orbit.center) {
+            const coneColor = '#ef4444';
+            const fovWidth = shot.fieldOfView.width || 20; // meters
+            const dist = shot.fieldOfView.distance || 30; // meters
+
+            // Calculate bearing from shot to center
+            const toRad = Math.PI / 180;
+            const toDeg = 180 / Math.PI;
+            const dLon = (orbit.center.lng - shot.position.lng) * toRad;
+            const y = Math.sin(dLon) * Math.cos(orbit.center.lat * toRad);
+            const x = Math.cos(shot.position.lat * toRad) * Math.sin(orbit.center.lat * toRad) -
+              Math.sin(shot.position.lat * toRad) * Math.cos(orbit.center.lat * toRad) * Math.cos(dLon);
+            let bearing = Math.atan2(y, x) * toDeg;
+            bearing = (bearing + 360) % 360;
+
+            // FOV angle (approx atan(width/2 / dist) * 2)
+            const fovAngle = (Math.atan((fovWidth / 2) / dist) * 2) * toDeg;
+            const halfFov = fovAngle / 2;
+
+            const R = 6371e3;
+            const getDest = (lat, lng, brng, dist) => {
+              const φ1 = lat * toRad;
+              const λ1 = lng * toRad;
+              const θ = brng * toRad;
+              const φ2 = Math.asin(Math.sin(φ1) * Math.cos(dist / R) + Math.cos(φ1) * Math.sin(dist / R) * Math.cos(θ));
+              const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(dist / R) * Math.cos(φ1), Math.cos(dist / R) - Math.sin(φ1) * Math.sin(φ2));
+              return [φ2 * toDeg, λ2 * toDeg];
+            };
+
+            const p1 = [shot.position.lat, shot.position.lng];
+            // Extend slightly past target for visual effect
+            const visualDist = dist * 1.1;
+            const p2 = getDest(shot.position.lat, shot.position.lng, bearing - halfFov, visualDist);
+            const p3 = getDest(shot.position.lat, shot.position.lng, bearing + halfFov, visualDist);
+
+            const cone = L.polygon([p1, p2, p3], {
+              color: coneColor,
+              weight: 0,
+              fillColor: coneColor,
+              fillOpacity: 0.4,
+              pane: 'flightPath'
+            });
+            MapManager.flightPathLayer.addLayer(cone);
+          }
 
           // Add angle marker with tooltip
           const angleMarker = L.marker([shot.position.lat, shot.position.lng], {
@@ -847,7 +968,7 @@ const MapManager = {
 
     MapManager.previewLine = L.polyline(
       [[lastPoint.lat, lastPoint.lng], [currentLat, currentLng]],
-      { color: '#999', weight: 2, dashArray: '5, 5', opacity: 0.5 }
+      { color: '#3388ff', weight: 3, dashArray: '5, 5', opacity: 0.7 }
     );
     MapManager.previewLine.addTo(MapManager.map);
   },
@@ -877,7 +998,7 @@ const MapManager = {
 
       const line = L.polyline(
         [[prevLat, prevLng], [lat, lng]],
-        { color: '#3388ff', weight: 2 }
+        { color: '#3388ff', weight: 4, opacity: 0.9 }
       );
 
       // Add distance label
@@ -948,7 +1069,8 @@ const MapManager = {
       color: '#3388ff',
       fillColor: '#3388ff',
       fillOpacity: 0.3,
-      weight: 2
+      weight: 3,
+      opacity: 0.8
     });
 
     MapManager.plotAreaLayer.addLayer(MapManager.currentAreaPolygon);
@@ -1015,7 +1137,7 @@ const MapManager = {
 
       const line = L.polyline(
         [[current.lat, current.lng], [next.lat, next.lng]],
-        { color: plot.color || '#3388ff', weight: 2 }
+        { color: plot.color || '#3388ff', weight: 4, opacity: 0.9 }
       );
       MapManager.plotLinesLayer.addLayer(line);
     }

@@ -7,6 +7,7 @@
   <title>Get Your Drone Photography Quote</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/ai-overlay.css">
 </head>
 
 <body>
@@ -20,6 +21,20 @@
         <!-- Floating Action Button -->
         <div class="floating-controls">
           <button id="cancelPlotting" class="fab btn-warning is-hidden">Start Over</button>
+        </div>
+
+        <!-- AI Progress Overlay (Top Center) -->
+        <div id="aiMapOverlay" class="ai-map-overlay ai-overlay-hidden">
+          <div class="ai-card">
+            <div class="ai-header">
+              <span class="spinner"></span>
+              <strong>AI Analysis in Progress</strong>
+            </div>
+            <div class="ai-progress-container">
+              <div class="ai-progress-bar" id="aiProgressBar" style="width: 0%"></div>
+            </div>
+            <p id="aiProgressText">Analyzing satellite imagery...</p>
+          </div>
         </div>
 
         <!-- Map Controls (minimal, top-right) -->
@@ -166,6 +181,10 @@
             <div class="quote-section">
               <p class="step-instruction">Fill out your contact information below and we'll calculate your personalized
                 quote based on your property size.</p>
+
+              <!-- AI Status Indicator - moved here for visibility -->
+
+
               <ul class="step-tips">
                 <li>Pick a package to control drone photo count.</li>
                 <li>If the area looks off, go back and Readjust Boundary.</li>
@@ -439,6 +458,14 @@
                 aria-label="Property orbit offset in meters">
             </div>
           </div>
+          <div class="section">
+            <h3>AI Configuration</h3>
+            <div class="form-group">
+              <label>Local AI Service</label>
+              <p class="help-text">Using LLaVA model at http://192.168.50.67:1234</p>
+              <button id="testAIConnection" class="btn btn-info">Test Connection</button>
+            </div>
+          </div>
           <button id="saveSettings" class="btn btn-primary">Save Settings</button>
         </div>
       </div>
@@ -516,6 +543,7 @@
     </div>
   </div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-image@0.4.0/leaflet-image.js"></script>
   <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
   <script src="config.js"></script>
   <script src="assets/js/utils.js"></script>
@@ -526,6 +554,7 @@
   <script src="assets/js/customers.js"></script>
   <script src="assets/js/lotHistory.js"></script>
   <script src="assets/js/quote.js"></script>
+  <script src="assets/js/ai-placement.js"></script>
   <script src="assets/js/map.js"></script>
   <script src="assets/js/app.js"></script>
 </body>
