@@ -14,7 +14,7 @@ const LandPlotting = {
     LandPlotting.loadPlots();
     LandPlotting.setupStepNavigation();
     LandPlotting.updateWorkflowSteps();
-    
+
     // Display existing plots on map
     if (typeof MapManager !== 'undefined' && MapManager.map) {
       LandPlotting.getAllPlots().forEach(plot => {
@@ -26,7 +26,7 @@ const LandPlotting = {
   setupStepNavigation: () => {
     const prevBtn = document.getElementById('prevStep');
     const nextBtn = document.getElementById('nextStep');
-    
+
     if (prevBtn) {
       prevBtn.addEventListener('click', () => {
         const currentStep = LandPlotting.getCurrentStep();
@@ -35,7 +35,7 @@ const LandPlotting = {
         }
       });
     }
-    
+
     if (nextBtn) {
       nextBtn.addEventListener('click', () => {
         const currentStep = LandPlotting.getCurrentStep();
@@ -48,7 +48,7 @@ const LandPlotting = {
 
   startPlotting: () => {
     if (LandPlotting.isPlotting) return;
-    
+
     LandPlotting.isPlotting = true;
     LandPlotting.currentPlot = {
       id: 'plot_' + Date.now(),
@@ -62,7 +62,7 @@ const LandPlotting = {
       color: LandPlotting.getNextColor(),
       isComplete: false
     };
-    
+
     LandPlotting.updateUI();
     if (typeof MapManager !== 'undefined') {
       MapManager.enterPlottingMode();
@@ -71,14 +71,14 @@ const LandPlotting = {
 
   addPoint: (lat, lng) => {
     if (!LandPlotting.isPlotting || !LandPlotting.currentPlot) return;
-    
+
     const point = {
       lat: lat,
       lng: lng,
       order: LandPlotting.currentPlot.points.length,
       distance: 0
     };
-    
+
     // Calculate distance from previous point
     if (LandPlotting.currentPlot.points.length > 0) {
       const prevPoint = LandPlotting.currentPlot.points[LandPlotting.currentPlot.points.length - 1];
@@ -88,12 +88,12 @@ const LandPlotting = {
       );
       point.distance = distance.feet;
     }
-    
+
     LandPlotting.currentPlot.points.push(point);
     LandPlotting.saveToHistory('add', point);
     LandPlotting.updatePlotMeasurements();
     LandPlotting.updateUI();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.addPlotPoint(lat, lng, LandPlotting.currentPlot.points.length - 1);
     }
@@ -102,10 +102,10 @@ const LandPlotting = {
   removePoint: (index) => {
     if (!LandPlotting.isPlotting || !LandPlotting.currentPlot) return;
     if (index < 0 || index >= LandPlotting.currentPlot.points.length) return;
-    
+
     const point = LandPlotting.currentPlot.points[index];
     LandPlotting.currentPlot.points.splice(index, 1);
-    
+
     // Reorder points
     LandPlotting.currentPlot.points.forEach((p, i) => {
       p.order = i;
@@ -120,11 +120,11 @@ const LandPlotting = {
         p.distance = 0;
       }
     });
-    
+
     LandPlotting.saveToHistory('remove', { index, point });
     LandPlotting.updatePlotMeasurements();
     LandPlotting.updateUI();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.updatePlotVisualization(LandPlotting.currentPlot);
     }
@@ -133,11 +133,11 @@ const LandPlotting = {
   movePoint: (index, newLat, newLng) => {
     if (!LandPlotting.isPlotting || !LandPlotting.currentPlot) return;
     if (index < 0 || index >= LandPlotting.currentPlot.points.length) return;
-    
+
     const oldPoint = { ...LandPlotting.currentPlot.points[index] };
     LandPlotting.currentPlot.points[index].lat = newLat;
     LandPlotting.currentPlot.points[index].lng = newLng;
-    
+
     // Recalculate distances
     if (index > 0) {
       const prevPoint = LandPlotting.currentPlot.points[index - 1];
@@ -147,7 +147,7 @@ const LandPlotting = {
       );
       LandPlotting.currentPlot.points[index].distance = distance.feet;
     }
-    
+
     if (index < LandPlotting.currentPlot.points.length - 1) {
       const nextPoint = LandPlotting.currentPlot.points[index + 1];
       const distance = Measurements.calculateDistance(
@@ -156,11 +156,11 @@ const LandPlotting = {
       );
       LandPlotting.currentPlot.points[index + 1].distance = distance.feet;
     }
-    
+
     LandPlotting.saveToHistory('move', { index, oldPoint, newPoint: { lat: newLat, lng: newLng } });
     LandPlotting.updatePlotMeasurements();
     LandPlotting.updateUI();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.updatePlotVisualization(LandPlotting.currentPlot);
     }
@@ -176,30 +176,30 @@ const LandPlotting = {
     LandPlotting.currentPlot.isComplete = true;
     LandPlotting.allPlots.push(LandPlotting.currentPlot);
     LandPlotting.savePlots();
-    
+
     // Display the completed plot
     if (typeof MapManager !== 'undefined') {
       MapManager.displayPlot(LandPlotting.currentPlot);
     }
-    
+
     LandPlotting.isPlotting = false;
     const finishedPlot = LandPlotting.currentPlot;
     LandPlotting.currentPlot = null;
     LandPlotting.history = { undoStack: [], redoStack: [] };
     LandPlotting.updateUI();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.exitPlottingMode();
       MapManager.clearPlotVisualization();
       MapManager.updateAllMeasurements();
     }
-    
+
     // Auto-calculate coverage and show quote estimate
     if (typeof Quote !== 'undefined') {
       Quote.calculateCoverage();
       Quote.updateQuoteDisplay();
     }
-    
+
     // Show obstacle marking option and auto-advance to step 2
     LandPlotting.showObstacleOption();
     // Auto-advance to step 2 after finishing plot
@@ -210,12 +210,12 @@ const LandPlotting = {
 
   cancelPlotting: () => {
     if (!LandPlotting.isPlotting) return;
-    
+
     LandPlotting.isPlotting = false;
     LandPlotting.currentPlot = null;
     LandPlotting.history = { undoStack: [], redoStack: [] };
     LandPlotting.updateUI();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.exitPlottingMode();
       MapManager.clearPlotVisualization();
@@ -231,11 +231,11 @@ const LandPlotting = {
       }
       return;
     }
-    
+
     const coords = LandPlotting.currentPlot.points.map(p => [p.lat, p.lng]);
     const area = Measurements.calculateArea(coords, 'Polygon');
     const perimeter = Measurements.calculatePerimeter(coords);
-    
+
     LandPlotting.currentPlot.area = area;
     LandPlotting.currentPlot.perimeter = perimeter;
     if (typeof MapManager !== 'undefined' && MapManager.updateAllMeasurements) {
@@ -314,7 +314,7 @@ const LandPlotting = {
       dock: 1,
       default: 4
     };
-    
+
     const baseShots = obstacles.map(obs => LandPlotting.getBuildingShotCountForType(obs.type));
     let allocations = baseShots;
     if (Number.isFinite(totalBuildingShots)) {
@@ -346,14 +346,14 @@ const LandPlotting = {
       const latRad = (obs.position.lat * Math.PI) / 180;
       const latOffset = radius / 111320;
       const lngOffset = radius / (111320 * Math.cos(latRad));
-      
+
       for (let i = 0; i < shots; i++) {
         const angle = (i / shots) * Math.PI * 2;
         const lat = obs.position.lat + (latOffset * Math.cos(angle));
         const lng = obs.position.lng + (lngOffset * Math.sin(angle));
         const point = [lat, lng];
         points.push(point);
-        
+
         // Calculate shot predictions
         if (typeof CoverageCalculator !== 'undefined' && CoverageCalculator.predictShotCoverage) {
           const shotPos = { lat, lng };
@@ -374,7 +374,7 @@ const LandPlotting = {
           });
         }
       }
-      
+
       return {
         id: obs.id,
         type: obs.type,
@@ -392,7 +392,7 @@ const LandPlotting = {
   getPropertyOrbit: (plot, shotCount) => {
     const count = Math.max(0, Math.round(shotCount || 0));
     if (!plot || !plot.points || plot.points.length < 3 || count === 0) return null;
-    
+
     const coords = plot.points.map(p => [p.lat, p.lng]);
     const ring = coords.concat([coords[0]]);
     const configuredOffset = (typeof CONFIG !== 'undefined')
@@ -421,7 +421,7 @@ const LandPlotting = {
     const isCCW = area > 0;
     const segments = [];
     let totalDistance = 0;
-    
+
     for (let i = 0; i < ring.length - 1; i++) {
       const start = ring[i];
       const end = ring[i + 1];
@@ -451,15 +451,15 @@ const LandPlotting = {
         totalDistance += meters;
       }
     }
-    
+
     if (!Number.isFinite(totalDistance) || totalDistance <= 0) return null;
-    
+
     const spacing = totalDistance / count;
     const startOffset = spacing / 2;
     const points = [];
     let segmentIndex = 0;
     let segmentStartDistance = 0;
-    
+
     for (let i = 0; i < count; i++) {
       const targetDistance = startOffset + i * spacing;
       while (segmentIndex < segments.length - 1 &&
@@ -467,7 +467,7 @@ const LandPlotting = {
         segmentStartDistance += segments[segmentIndex].meters;
         segmentIndex += 1;
       }
-      
+
       const segment = segments[segmentIndex];
       const offset = Math.max(0, targetDistance - segmentStartDistance);
       const ratio = segment.meters > 0 ? Math.min(offset / segment.meters, 1) : 0;
@@ -477,7 +477,7 @@ const LandPlotting = {
       const lng = origin.lng + (x / metersPerLng);
       points.push([lat, lng]);
     }
-    
+
     return {
       id: plot.id,
       type: 'property',
@@ -497,7 +497,7 @@ const LandPlotting = {
   addObstacle: (plotId, lat, lng, type = 'house') => {
     const plot = LandPlotting.allPlots.find(p => p.id === plotId);
     if (!plot) return;
-    
+
     const obstacle = {
       id: 'obstacle_' + Date.now(),
       plotId: plotId,
@@ -506,15 +506,15 @@ const LandPlotting = {
       position: { lat: lat, lng: lng },
       createdAt: new Date().toISOString()
     };
-    
+
     if (!plot.obstacles) plot.obstacles = [];
     plot.obstacles.push(obstacle);
     LandPlotting.savePlots();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.addObstacleMarker(obstacle);
     }
-    
+
     return obstacle;
   },
 
@@ -533,10 +533,10 @@ const LandPlotting = {
   removeObstacle: (plotId, obstacleId) => {
     const plot = LandPlotting.allPlots.find(p => p.id === plotId);
     if (!plot || !plot.obstacles) return;
-    
+
     plot.obstacles = plot.obstacles.filter(o => o.id !== obstacleId);
     LandPlotting.savePlots();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.removeObstacleMarker(obstacleId);
     }
@@ -565,7 +565,7 @@ const LandPlotting = {
   addPoi: (plotId, lat, lng, type = 'garden') => {
     const plot = LandPlotting.allPlots.find(p => p.id === plotId);
     if (!plot) return;
-    
+
     const poi = {
       id: 'poi_' + Date.now(),
       plotId: plotId,
@@ -574,15 +574,15 @@ const LandPlotting = {
       position: { lat: lat, lng: lng },
       createdAt: new Date().toISOString()
     };
-    
+
     if (!plot.pois) plot.pois = [];
     plot.pois.push(poi);
     LandPlotting.savePlots();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.addPoiMarker(poi);
     }
-    
+
     return poi;
   },
 
@@ -601,10 +601,10 @@ const LandPlotting = {
   removePoi: (plotId, poiId) => {
     const plot = LandPlotting.allPlots.find(p => p.id === plotId);
     if (!plot || !plot.pois) return;
-    
+
     plot.pois = plot.pois.filter(p => p.id !== poiId);
     LandPlotting.savePlots();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.removePoiMarker(poiId);
     }
@@ -637,10 +637,10 @@ const LandPlotting = {
 
   undo: () => {
     if (LandPlotting.history.undoStack.length === 0) return;
-    
+
     const action = LandPlotting.history.undoStack.pop();
     LandPlotting.history.redoStack.push(action);
-    
+
     // Apply reverse action
     if (action.type === 'add') {
       LandPlotting.currentPlot.points.pop();
@@ -651,7 +651,7 @@ const LandPlotting = {
       point.lat = action.data.oldPoint.lat;
       point.lng = action.data.oldPoint.lng;
     }
-    
+
     // Reorder and recalculate
     LandPlotting.currentPlot.points.forEach((p, i) => {
       p.order = i;
@@ -666,10 +666,10 @@ const LandPlotting = {
         p.distance = 0;
       }
     });
-    
+
     LandPlotting.updatePlotMeasurements();
     LandPlotting.updateUI();
-    
+
     if (typeof MapManager !== 'undefined') {
       MapManager.updatePlotVisualization(LandPlotting.currentPlot);
     }
@@ -693,7 +693,7 @@ const LandPlotting = {
     const cancelBtn = document.getElementById('cancelPlotting');
     const pointCount = document.getElementById('pointCount');
     const undoBtn = document.getElementById('undoLastPoint');
-    
+
     if (LandPlotting.isPlotting) {
       if (panel) panel.classList.remove('is-hidden');
       if (startBtn) startBtn.classList.add('is-hidden');
@@ -714,7 +714,7 @@ const LandPlotting = {
       if (finishBtn) finishBtn.classList.add('is-hidden');
       if (cancelBtn) cancelBtn.classList.add('is-hidden');
     }
-    
+
     // Update workflow steps
     LandPlotting.updateWorkflowSteps();
   },
@@ -792,31 +792,31 @@ const LandPlotting = {
     const obstacleComplete = latestPlot ? latestPlot.obstacleReviewComplete === true : false;
     const hasPlot = plots.length > 0;
     const currentStep = LandPlotting.getCurrentStep();
-    
+
     // Reset all steps
     [step1, step2, step3].forEach(step => {
       if (step) {
         step.classList.remove('active', 'complete');
       }
     });
-    
+
     // Set active step based on currentStep, but respect state constraints
     if (currentStep === 1 || LandPlotting.isPlotting) {
       if (step1) step1.classList.add('active');
     } else if (hasPlot && currentStep !== 2 && currentStep !== 3) {
       if (step1) step1.classList.add('complete');
     }
-    
+
     if (currentStep === 2 && !LandPlotting.isPlotting) {
       if (step2) step2.classList.add('active');
     } else if (hasPlot && obstacleComplete && currentStep !== 2) {
       if (step2) step2.classList.add('complete');
     }
-    
+
     if (currentStep === 3 && hasPlot && obstacleComplete && !LandPlotting.isPlotting && !LandPlotting.isMarkingObstacles && !LandPlotting.isMarkingPois) {
       if (step3) step3.classList.add('active');
     }
-    
+
     // Update status labels
     if (step1Status) {
       if (currentStep === 1 || LandPlotting.isPlotting) {
@@ -827,7 +827,7 @@ const LandPlotting = {
         step1Status.textContent = 'Active';
       }
     }
-    
+
     if (step2Status) {
       if (LandPlotting.isPlotting) {
         step2Status.textContent = 'Locked';
@@ -841,7 +841,7 @@ const LandPlotting = {
         step2Status.textContent = 'Locked';
       }
     }
-    
+
     if (step3Status) {
       if (currentStep === 3 && hasPlot && obstacleComplete) {
         step3Status.textContent = 'Active';
@@ -855,9 +855,10 @@ const LandPlotting = {
     }
 
     if (obstaclePanel) {
-      if (hasPlot && !obstacleComplete && !LandPlotting.isPlotting) {
+      // Show panel if on Step 2 and have a plot (regardless of completion status)
+      if (currentStep === 2 && hasPlot && !LandPlotting.isPlotting) {
         obstaclePanel.classList.remove('is-hidden');
-      } else if (!LandPlotting.isMarkingObstacles) {
+      } else if (!LandPlotting.isMarkingObstacles && !LandPlotting.isMarkingPois) {
         obstaclePanel.classList.add('is-hidden');
       }
     }
@@ -937,29 +938,34 @@ const LandPlotting = {
       latest.obstacleReviewComplete = true;
       LandPlotting.savePlots();
     }
-    
+
     // Remove obstacle marking click handler
     if (typeof MapManager !== 'undefined' && MapManager.map) {
       MapManager.map.off('click');
       MapManager.map.getContainer().style.cursor = '';
     }
-    
+
     // Update workflow steps - move to step 3
     LandPlotting.updateWorkflowSteps();
-    
+
     // Trigger coverage calculation
     if (typeof MapManager !== 'undefined') {
       MapManager.updateAllMeasurements();
     }
-    
+
     // Auto-calculate coverage
     if (typeof Quote !== 'undefined') {
       Quote.calculateCoverage();
     }
-    
+
     // Auto-advance to step 3
     setTimeout(() => {
       LandPlotting.goToStep(3);
+
+      // Trigger AI Analysis
+      if (typeof AIPlacement !== 'undefined') {
+        AIPlacement.analyzeProperty();
+      }
     }, 100);
   },
 
@@ -1031,7 +1037,7 @@ const LandPlotting = {
       LandPlotting.isPlotting = false;
       LandPlotting.savePlots();
       LandPlotting.updateUI();
-      
+
       if (typeof MapManager !== 'undefined') {
         MapManager.clearAllPlots();
         MapManager.updateAllMeasurements();

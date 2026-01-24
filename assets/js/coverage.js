@@ -20,19 +20,19 @@ const CoverageCalculator = {
     // Calculate what area will be visible in the frame
     const distance = Measurements.calculateDistance([shotLat, shotLng], [targetLat, targetLng]);
     const groundDistance = distance.meters;
-    
+
     // Calculate FOV based on camera specs
     // For oblique shots, the effective altitude is the distance to the target
     const effectiveDistance = Math.sqrt(groundDistance * groundDistance + altitude * altitude);
     const fovWidth = (sensorWidth / focalLength) * effectiveDistance;
     const fovHeight = fovWidth * 0.75; // Assuming 4:3 aspect ratio
-    
+
     // Adjust for camera angle (oblique shots see more area on ground)
     // When camera is angled, the ground coverage increases
     const angleRad = (cameraAngle * Math.PI) / 180;
     const adjustedWidth = fovWidth / Math.cos(angleRad);
     const adjustedHeight = fovHeight / Math.cos(angleRad);
-    
+
     return {
       width: adjustedWidth,
       height: adjustedHeight,
@@ -57,10 +57,10 @@ const CoverageCalculator = {
       [shotPosition.lat, shotPosition.lng],
       [targetPosition.lat, targetPosition.lng]
     );
-    
+
     // Ground distance is the horizontal distance (for angle calculation)
     const groundDistance = distance.meters;
-    
+
     const angle = CoverageCalculator.calculateCameraAngle(altitude, groundDistance, buildingHeight);
     const fov = CoverageCalculator.calculateFieldOfView(
       shotPosition.lat, shotPosition.lng,
@@ -70,7 +70,7 @@ const CoverageCalculator = {
       droneSpecs.sensorWidth,
       droneSpecs.focalLength
     );
-    
+
     return {
       position: shotPosition,
       target: targetPosition,
@@ -132,7 +132,7 @@ const CoverageCalculator = {
     }
     const coverageWidth = (sensorWidth / focalLength) * altitude;
     const coverageHeight = (sensorHeight / focalLength) * altitude;
-    
+
     return {
       width: coverageWidth,
       height: coverageHeight,
@@ -149,7 +149,7 @@ const CoverageCalculator = {
     // Spacing = coverage * (1 - overlap/100)
     const frontSpacing = coverage.height * (1 - frontOverlap / 100);
     const sideSpacing = coverage.width * (1 - sideOverlap / 100);
-    
+
     return {
       front: frontSpacing,
       side: sideSpacing,
@@ -161,10 +161,10 @@ const CoverageCalculator = {
   calculatePhotosNeeded: (areaSqMeters, coverage, spacing) => {
     // Calculate how many photos are needed to cover the area
     // This is a simplified calculation - in practice, flight path optimization would be more complex
-    
+
     // Estimate based on effective coverage per photo (accounting for overlap)
     const effectiveCoveragePerPhoto = spacing.front * spacing.side; // square meters
-    
+
     // Guard against division by zero
     if (!effectiveCoveragePerPhoto || effectiveCoveragePerPhoto <= 0 || !Number.isFinite(effectiveCoveragePerPhoto)) {
       return {
@@ -173,12 +173,12 @@ const CoverageCalculator = {
         effectiveCoveragePerPhoto: 0
       };
     }
-    
+
     const photosNeeded = Math.ceil(areaSqMeters / effectiveCoveragePerPhoto);
-    
+
     // Add buffer for edge cases and turns
     const photosWithBuffer = Math.ceil(photosNeeded * 1.1);
-    
+
     return {
       minimum: photosNeeded,
       recommended: photosWithBuffer,
@@ -187,9 +187,10 @@ const CoverageCalculator = {
   },
 
   calculateFlightPath: (areaCoordinates, coverage, spacing, options = {}) => {
-    // Calculate optimal flight path for the area
-    // This is a simplified grid pattern calculation
-    
+    // Shot-type-aware flight path calculation
+    // - Top-down shots: Interior grid with coverage-based spacing
+    // - Angled shots: Perimeter orbit positions
+
     try {
       if (!spacing || spacing.front <= 0 || spacing.side <= 0) {
         return null;
@@ -197,6 +198,7 @@ const CoverageCalculator = {
       if (!areaCoordinates || areaCoordinates.length < 3) {
         return null;
       }
+
       const lngLat = Measurements.toLngLat(areaCoordinates);
       const ring = (() => {
         if (lngLat.length === 0) return lngLat;
@@ -207,7 +209,13 @@ const CoverageCalculator = {
       })();
       const areaPolygon = turf.polygon([ring]);
       const bbox = turf.bbox(areaPolygon);
-      
+      const altitude = options.altitude || CONFIG.droneSpecs?.defaultAltitude || 60;
+
+      // Get target counts
+      const targetTopDown = Number.isFinite(options.topDownShots) ? Math.max(0, Math.round(options.topDownShots)) : 0;
+      const targetLandPhotos = Number.isFinite(options.landPhotos) ? Math.max(0, Math.round(options.landPhotos)) : 0;
+      const targetAngled = Math.max(0, targetLandPhotos - targetTopDown);
+
       // Get bounding box dimensions
       const sw = turf.point([bbox[0], bbox[1]]);
       const width = turf.distance(sw, turf.point([bbox[2], bbox[1]]), { units: 'meters' });
@@ -215,120 +223,93 @@ const CoverageCalculator = {
       if (!Number.isFinite(width) || !Number.isFinite(height)) {
         return null;
       }
-      
-      const targetPhotos = Number.isFinite(options.landPhotos) ? Math.max(0, Math.round(options.landPhotos)) : 0;
-      const targetTopDown = Number.isFinite(options.topDownShots) ? Math.max(0, Math.round(options.topDownShots)) : 0;
-      const maxPoints = 40000;
-      
-      const buildGrid = (frontSpacing, sideSpacing) => {
-        const flightLines = Math.max(1, Math.ceil(height / frontSpacing));
-        const photosPerLine = Math.max(1, Math.ceil(width / sideSpacing));
-        if (!Number.isFinite(flightLines) || !Number.isFinite(photosPerLine)) {
-          return null;
-        }
-        if (flightLines < 1 || photosPerLine < 1) {
-          return null;
-        }
-        const totalPoints = flightLines * photosPerLine;
-        if (totalPoints > maxPoints) {
-          return null;
-        }
+
+      const shotPoints = [];
+      const waypoints = [];
+
+      // ========== TOP-DOWN SHOTS: Interior grid ==========
+      if (targetTopDown > 0) {
+        // Calculate spacing to fit target count
+        const propertyArea = width * height;
+        const areaPerShot = propertyArea / targetTopDown;
+        const gridSpacing = Math.sqrt(areaPerShot);
+
+        const flightLines = Math.max(1, Math.round(height / gridSpacing));
+        const photosPerLine = Math.max(1, Math.round(width / gridSpacing));
 
         const startLat = bbox[1];
         const startLng = bbox[0];
-        const latStep = (bbox[3] - bbox[1]) / Math.max(flightLines - 1, 1);
-        const lngStep = (bbox[2] - bbox[0]) / Math.max(photosPerLine - 1, 1);
-        const lines = [];
-        const points = [];
-        
+        const latStep = (bbox[3] - bbox[1]) / Math.max(flightLines, 1);
+        const lngStep = (bbox[2] - bbox[0]) / Math.max(photosPerLine, 1);
+
+        // Offset to center the grid
+        const latOffset = latStep / 2;
+        const lngOffset = lngStep / 2;
+
         for (let i = 0; i < flightLines; i++) {
-          const lat = startLat + (i * latStep);
+          const lat = startLat + latOffset + (i * latStep);
           const line = [];
           for (let j = 0; j < photosPerLine; j++) {
-            const lng = startLng + (j * lngStep);
+            const lng = startLng + lngOffset + (j * lngStep);
             const candidate = turf.point([lng, lat]);
             if (!turf.booleanPointInPolygon(candidate, areaPolygon)) {
               continue;
             }
-            const point = {
-              id: `${i}-${j}`,
-              row: i,
-              col: j,
+            shotPoints.push({
               lat,
-              lng
-            };
-            line.push(point);
-            points.push(point);
+              lng,
+              type: 'top-down',
+              cameraAngle: { pitch: 90, degrees: 90, description: 'Nadir (straight down)' }
+            });
+            line.push([lat, lng]);
           }
-          if (line.length > 0) {
-            lines.push(line);
+          if (line.length >= 2) {
+            waypoints.push(line);
           }
         }
-
-        return { lines, points };
-      };
-
-      let spacingFront = spacing.front;
-      let spacingSide = spacing.side;
-      let grid = buildGrid(spacingFront, spacingSide);
-      if (!grid) {
-        return null;
       }
 
-      let attempts = 0;
-      while (targetPhotos > 0 && grid.points.length < targetPhotos && attempts < 5) {
-        spacingFront *= 0.85;
-        spacingSide *= 0.85;
-        grid = buildGrid(spacingFront, spacingSide);
-        if (!grid) {
-          return null;
+      // ========== ANGLED SHOTS: Perimeter orbit ==========
+      if (targetAngled > 0) {
+        // Create offset perimeter (10m outside boundary)
+        const offsetMeters = CONFIG.flightPathDefaults?.propertyOrbitOffsetMeters || 10;
+        let perimeterLine;
+        try {
+          const buffered = turf.buffer(areaPolygon, offsetMeters, { units: 'meters' });
+          perimeterLine = turf.polygonToLine(buffered);
+        } catch (e) {
+          // Fallback to original boundary
+          perimeterLine = turf.polygonToLine(areaPolygon);
         }
-        attempts += 1;
-      }
 
-      if (grid.points.length === 0) {
-        return null;
-      }
+        const perimeterLength = turf.length(perimeterLine, { units: 'meters' });
+        const spacingAlongPerimeter = perimeterLength / targetAngled;
 
-      const shotCount = targetPhotos > 0 ? Math.min(targetPhotos, grid.points.length) : grid.points.length;
-      const selectedPoints = CoverageCalculator.sampleEvenPoints(grid.points, shotCount);
-      const selectedIds = new Set(selectedPoints.map(point => point.id));
-      const waypoints = grid.lines
-        .map(line => line.filter(point => selectedIds.has(point.id)).map(point => [point.lat, point.lng]))
-        .filter(line => line.length >= 2);
+        // Get center of property for angle calculation
+        const centroid = turf.centroid(areaPolygon);
+        const centerLng = centroid.geometry.coordinates[0];
+        const centerLat = centroid.geometry.coordinates[1];
 
-      // Add angle predictions for property shots
-      const altitude = options.altitude || CONFIG.droneSpecs?.defaultAltitude || 60;
-      const shotPoints = selectedPoints.map(point => {
-        const shot = { lat: point.lat, lng: point.lng, type: 'angled' };
-        
-        // Calculate approximate angle for property shots (typically 45-60° for good coverage)
-        // For top-down shots, angle is 90° (straight down)
-        // For angled shots, calculate based on typical oblique photography
-        const typicalAngle = 50; // Typical oblique angle for property photography
-        shot.cameraAngle = {
-          pitch: typicalAngle,
-          degrees: typicalAngle,
-          description: 'Oblique (angled)'
-        };
-        
-        return shot;
-      });
-      
-      const topDownCount = Math.min(targetTopDown, shotPoints.length);
-      const topDownIndices = CoverageCalculator.pickEvenIndices(shotPoints.length, topDownCount);
-      topDownIndices.forEach(index => {
-        if (shotPoints[index]) {
-          shotPoints[index].type = 'top-down';
-          shotPoints[index].cameraAngle = {
-            pitch: 90,
-            degrees: 90,
-            description: 'Nadir (straight down)'
-          };
+        // Place angled shots evenly along perimeter
+        for (let i = 0; i < targetAngled; i++) {
+          const distanceAlong = i * spacingAlongPerimeter;
+          const pointOnLine = turf.along(perimeterLine, distanceAlong, { units: 'meters' });
+          const lng = pointOnLine.geometry.coordinates[0];
+          const lat = pointOnLine.geometry.coordinates[1];
+
+          // Calculate bearing from shot position to property center
+          const bearing = turf.bearing(pointOnLine, centroid);
+
+          shotPoints.push({
+            lat,
+            lng,
+            type: 'angled',
+            compassBearing: (bearing + 360) % 360,
+            cameraAngle: { pitch: 50, degrees: 50, description: 'Oblique (angled)' }
+          });
         }
-      });
-      const angledCount = shotPoints.length - topDownCount;
-      
+      }
+
       // Calculate total flight distance
       let totalDistance = 0;
       waypoints.forEach((line) => {
@@ -338,7 +319,10 @@ const CoverageCalculator = {
           totalDistance += turf.distance(from, to, { units: 'meters' });
         }
       });
-      
+
+      const topDownCount = shotPoints.filter(s => s.type === 'top-down').length;
+      const angledCount = shotPoints.filter(s => s.type === 'angled').length;
+
       return {
         waypoints: waypoints,
         shotPoints: shotPoints,
@@ -373,7 +357,7 @@ const CoverageCalculator = {
     const totalTimeSeconds = photos * photoInterval;
     const minutes = Math.floor(totalTimeSeconds / 60);
     const seconds = totalTimeSeconds % 60;
-    
+
     return {
       totalSeconds: totalTimeSeconds,
       minutes: minutes,
@@ -387,11 +371,11 @@ const CoverageCalculator = {
     if (!areaCoordinates || !areaSqMeters || areaSqMeters <= 0) {
       return null;
     }
-    
+
     const specs = droneSpecs || CONFIG.droneSpecs;
     const altitudeMultiplier = options.altitudeMultiplier && options.altitudeMultiplier > 0 ? options.altitudeMultiplier : 1;
     const altitudeMeters = (altitude || specs.defaultAltitude) * altitudeMultiplier;
-    
+
     // Calculate photo coverage
     const coverage = CoverageCalculator.calculatePhotoCoverage(
       altitudeMeters,
@@ -404,7 +388,7 @@ const CoverageCalculator = {
     if (!coverage || coverage.width <= 0 || coverage.height <= 0) {
       return null;
     }
-    
+
     // Calculate GSD
     const gsd = CoverageCalculator.calculateGSD(
       altitudeMeters,
@@ -415,7 +399,7 @@ const CoverageCalculator = {
     if (!Number.isFinite(gsd) || gsd <= 0) {
       return null;
     }
-    
+
     // Calculate photo spacing
     const spacing = CoverageCalculator.calculatePhotoSpacing(
       coverage,
@@ -431,7 +415,7 @@ const CoverageCalculator = {
       spacing.frontFeet *= options.spacingMultiplier;
       spacing.sideFeet *= options.spacingMultiplier;
     }
-    
+
     // Calculate photos needed
     const photos = CoverageCalculator.calculatePhotosNeeded(areaSqMeters, coverage, spacing);
     const landPhotos = Number.isFinite(options.landPhotos) ? Math.max(0, Math.round(options.landPhotos)) : photos.recommended;
@@ -439,16 +423,16 @@ const CoverageCalculator = {
     if (landPhotos > 0) {
       photos.recommended = landPhotos;
     }
-    
+
     // Calculate flight path
     const flightPath = CoverageCalculator.calculateFlightPath(areaCoordinates, coverage, spacing, {
       landPhotos: photos.recommended,
       topDownShots: Math.min(topDownShots, photos.recommended)
     });
-    
+
     // Calculate flight time
     const flightTime = CoverageCalculator.calculateFlightTime(photos.recommended, 2);
-    
+
     return {
       coverage: coverage,
       gsd: gsd,

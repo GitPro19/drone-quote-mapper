@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="assets/css/styles.css">
 </head>
+
 <body>
   <div class="app-container">
     <header class="app-header">
@@ -19,7 +21,7 @@
         <div class="floating-controls">
           <button id="cancelPlotting" class="fab btn-warning is-hidden">Start Over</button>
         </div>
-        
+
         <!-- Map Controls (minimal, top-right) -->
         <div class="map-controls">
           <div class="map-controls-group">
@@ -43,9 +45,9 @@
             <button id="finishPlotting" class="btn btn-submit is-hidden">Finish Mapping</button>
           </div>
         </div>
-        
+
         <div id="map" class="map-container"></div>
-        
+
         <!-- Measurement Card (bottom-left) -->
         <div class="measurement-card">
           <div class="measurement-value" id="measurementValue">0</div>
@@ -59,7 +61,7 @@
           <button id="prevStep" class="btn btn-secondary btn-nav" disabled>← Previous</button>
           <button id="nextStep" class="btn btn-primary btn-nav" disabled>Next →</button>
         </div>
-        
+
         <!-- Step 1: Map Your Property -->
         <div class="workflow-step active" id="workflowStep1">
           <div class="step-header">
@@ -68,17 +70,26 @@
             <span class="step-status" id="step1Status"></span>
           </div>
           <div class="step-content">
-            <p class="step-instruction">Click on the map to mark the corners of your property. Start by clicking where one corner of your land is, then continue clicking around the boundary until you've outlined the entire area.</p>
-            <p class="help-text">💡 <strong>Tip:</strong> Use the search box in the top-right to find your address quickly!</p>
-            <p class="help-text" style="margin-top: 0.5rem;">Don't worry about being perfect - we can adjust the boundaries later if needed.</p>
+            <p class="step-instruction">Click on the map to mark the corners of your property. Start by clicking where
+              one corner of your land is, then continue clicking around the boundary until you've outlined the entire
+              area.</p>
+            <p class="help-text">💡 <strong>Tip:</strong> Use the search box in the top-right to find your address
+              quickly!</p>
+            <p class="help-text" style="margin-top: 0.5rem;">Don't worry about being perfect - we can adjust the
+              boundaries later if needed.</p>
             <ul class="step-tips">
               <li>Click to add corners, then drag points to fine-tune.</li>
               <li>Press Enter to finish, Esc to cancel, Ctrl/Cmd+Z to undo.</li>
             </ul>
             <div class="plotting-panel is-hidden" id="plottingPanel">
               <div class="plotting-status">
-                <span>Corner points marked: <strong id="pointCount">0</strong></span>
-                <p class="help-text" style="margin-top: 0.5rem; font-size: 0.85rem;">Keep clicking to add more corners. You need at least 3 points to create your property boundary.</p>
+                <span id="pointCount">0</span> points plotted
+                <div id="aiStatus" class="ai-status hidden"
+                  style="margin-top: 5px; font-size: 0.85rem; color: #10b981;">
+                  <span class="spinner"></span> AI sizing property...
+                </div>
+                <p class="help-text" style="margin-top: 0.5rem; font-size: 0.85rem;">Keep clicking to add more corners.
+                  You need at least 3 points to create your property boundary.</p>
               </div>
               <button id="undoLastPoint" class="btn btn-sm btn-secondary" disabled>Undo Last Point</button>
             </div>
@@ -94,7 +105,8 @@
           </div>
           <div class="step-content">
             <div class="obstacle-panel is-hidden" id="obstaclePanel">
-              <p class="step-instruction">If you have houses, barns, or other large buildings on your property, click on the map to mark their locations.</p>
+              <p class="step-instruction">If you have houses, barns, or other large buildings on your property, click on
+                the map to mark their locations.</p>
               <p class="help-text">This helps us plan the safest and most efficient flight path for our drone.</p>
               <ul class="step-tips">
                 <li>Select a building type, then click the map to drop a marker.</li>
@@ -114,7 +126,8 @@
               <p class="help-text is-hidden" id="markBuildingHint">Click on the map to place a building marker.</p>
               <div id="obstaclesList" class="obstacles-list"></div>
               <div class="poi-panel">
-                <p class="step-instruction" style="margin-top: 1rem;">Mark any points of interest like gardens, pools, rivers, or entrances.</p>
+                <p class="step-instruction" style="margin-top: 1rem;">Mark any points of interest like gardens, pools,
+                  rivers, or entrances.</p>
                 <div class="form-group">
                   <label for="poiType">POI type</label>
                   <select id="poiType" class="form-select" aria-label="POI type">
@@ -151,15 +164,19 @@
           </div>
           <div class="step-content">
             <div class="quote-section">
-              <p class="step-instruction">Fill out your contact information below and we'll calculate your personalized quote based on your property size.</p>
+              <p class="step-instruction">Fill out your contact information below and we'll calculate your personalized
+                quote based on your property size.</p>
               <ul class="step-tips">
                 <li>Pick a package to control drone photo count.</li>
                 <li>If the area looks off, go back and Readjust Boundary.</li>
                 <li>Most drone shots are angled; only the top-down shots show on the map.</li>
-                <li>Hover over angle markers (red circles) on building orbits to see shot predictions and camera angles.</li>
+                <li>Hover over angle markers (red circles) on building orbits to see shot predictions and camera angles.
+                </li>
               </ul>
               <div class="form-group">
-                <label for="quotePackage" style="font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; display: block;">Choose Your Drone Photo Package</label>
+                <label for="quotePackage"
+                  style="font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; display: block;">Choose Your Drone
+                  Photo Package</label>
                 <div class="package-selector" id="packageSelector">
                   <!-- Packages will be dynamically inserted here -->
                 </div>
@@ -215,15 +232,18 @@
               <form id="quoteForm" class="quote-form">
                 <div class="form-group">
                   <label for="quoteCustomerName">Your Name *</label>
-                  <input type="text" id="quoteCustomerName" class="form-input" required placeholder="Enter your full name" aria-label="Your Name">
+                  <input type="text" id="quoteCustomerName" class="form-input" required
+                    placeholder="Enter your full name" aria-label="Your Name">
                 </div>
                 <div class="form-group">
                   <label for="quoteCustomerEmail">Email Address *</label>
-                  <input type="email" id="quoteCustomerEmail" class="form-input" required placeholder="your.email@example.com" aria-label="Email Address">
+                  <input type="email" id="quoteCustomerEmail" class="form-input" required
+                    placeholder="your.email@example.com" aria-label="Email Address">
                 </div>
                 <div class="form-group">
                   <label for="quoteCustomerPhone">Phone Number</label>
-                  <input type="tel" id="quoteCustomerPhone" class="form-input" placeholder="(555) 123-4567" aria-label="Phone Number">
+                  <input type="tel" id="quoteCustomerPhone" class="form-input" placeholder="(555) 123-4567"
+                    aria-label="Phone Number">
                 </div>
                 <div class="form-group">
                   <label for="quoteServiceType">Service Type *</label>
@@ -236,7 +256,7 @@
                 <input type="hidden" id="quotePhotoCount" value="0">
                 <input type="hidden" id="quoteCustomer" value="">
                 <input type="hidden" id="quoteBasePrice" value="0">
-                
+
                 <div id="quotePriceBreakdown" class="quote-price-breakdown is-hidden">
                   <h4>Your Estimated Quote</h4>
                   <div class="quote-price-item">
@@ -260,8 +280,10 @@
                     <span id="quoteTotalCost">$0.00</span>
                   </div>
                 </div>
-                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem; padding: 1rem; font-size: 1.1rem;">Request My Quote</button>
-                <p class="help-text" style="text-align: center; margin-top: 0.5rem; font-size: 0.85rem;">We'll send your detailed quote to your email within 24 hours.</p>
+                <button type="submit" class="btn btn-primary"
+                  style="width: 100%; margin-top: 1rem; padding: 1rem; font-size: 1.1rem;">Request My Quote</button>
+                <p class="help-text" style="text-align: center; margin-top: 0.5rem; font-size: 0.85rem;">We'll send your
+                  detailed quote to your email within 24 hours.</p>
               </form>
             </div>
           </div>
@@ -272,7 +294,7 @@
           <button class="tab-btn" data-tab="customers">Customers</button>
           <button class="tab-btn" data-tab="settings">Settings</button>
         </div>
-        
+
         <div id="customersTab" class="tab-content">
           <div class="section">
             <h3>Customer Management</h3>
@@ -304,41 +326,49 @@
             <h3>Map Configuration</h3>
             <div class="form-group">
               <label for="defaultLat">Default Map Center (Latitude)</label>
-              <input type="number" id="defaultLat" class="form-input" step="0.0001" value="44.8356" aria-label="Default Map Center Latitude">
+              <input type="number" id="defaultLat" class="form-input" step="0.0001" value="44.8356"
+                aria-label="Default Map Center Latitude">
             </div>
             <div class="form-group">
               <label for="defaultLng">Default Map Center (Longitude)</label>
-              <input type="number" id="defaultLng" class="form-input" step="0.0001" value="-69.2733" aria-label="Default Map Center Longitude">
+              <input type="number" id="defaultLng" class="form-input" step="0.0001" value="-69.2733"
+                aria-label="Default Map Center Longitude">
             </div>
             <div class="form-group">
               <label for="defaultZoom">Default Zoom Level</label>
-              <input type="number" id="defaultZoom" class="form-input" min="1" max="18" value="13" aria-label="Default Zoom Level">
+              <input type="number" id="defaultZoom" class="form-input" min="1" max="18" value="13"
+                aria-label="Default Zoom Level">
             </div>
           </div>
           <div class="section">
             <h3>Company Information</h3>
             <div class="form-group">
               <label for="companyName">Company Name</label>
-              <input type="text" id="companyName" class="form-input" placeholder="Your Company Name" aria-label="Company Name">
+              <input type="text" id="companyName" class="form-input" placeholder="Your Company Name"
+                aria-label="Company Name">
             </div>
           </div>
           <div class="section">
             <h3>Pricing Configuration</h3>
             <div class="form-group">
               <label for="basePricePerAcre">Base Pricing (per acre)</label>
-              <input type="number" id="basePricePerAcre" class="form-input" step="0.01" value="250" aria-label="Base Pricing per acre">
+              <input type="number" id="basePricePerAcre" class="form-input" step="0.01" value="250"
+                aria-label="Base Pricing per acre">
             </div>
             <div class="form-group">
               <label for="photoProcessingCost">Drone Photo Processing Cost (per photo)</label>
-              <input type="number" id="photoProcessingCost" class="form-input" step="0.01" value="0.50" aria-label="Drone Photo Processing Cost per photo">
+              <input type="number" id="photoProcessingCost" class="form-input" step="0.01" value="0.50"
+                aria-label="Drone Photo Processing Cost per photo">
             </div>
             <div class="form-group">
               <label for="photoMultiplier">Photo Multiplier</label>
-              <input type="number" id="photoMultiplier" class="form-input" step="0.1" value="1.0" aria-label="Photo Multiplier">
+              <input type="number" id="photoMultiplier" class="form-input" step="0.1" value="1.0"
+                aria-label="Photo Multiplier">
             </div>
             <div class="form-group">
               <label for="minimumPrice">Minimum Price</label>
-              <input type="number" id="minimumPrice" class="form-input" step="0.01" value="100" aria-label="Minimum Price">
+              <input type="number" id="minimumPrice" class="form-input" step="0.01" value="100"
+                aria-label="Minimum Price">
             </div>
           </div>
           <div class="section">
@@ -349,53 +379,64 @@
             </div>
             <div class="form-group">
               <label for="sensorWidth">Sensor Width (mm)</label>
-              <input type="number" id="sensorWidth" class="form-input" step="0.1" value="15.7" aria-label="Sensor Width in millimeters">
+              <input type="number" id="sensorWidth" class="form-input" step="0.1" value="15.7"
+                aria-label="Sensor Width in millimeters">
             </div>
             <div class="form-group">
               <label for="sensorHeight">Sensor Height (mm)</label>
-              <input type="number" id="sensorHeight" class="form-input" step="0.1" value="10.5" aria-label="Sensor Height in millimeters">
+              <input type="number" id="sensorHeight" class="form-input" step="0.1" value="10.5"
+                aria-label="Sensor Height in millimeters">
             </div>
             <div class="form-group">
               <label for="focalLength">Focal Length (mm, 35mm equivalent)</label>
-              <input type="number" id="focalLength" class="form-input" step="0.1" value="24" aria-label="Focal Length in millimeters, 35mm equivalent">
+              <input type="number" id="focalLength" class="form-input" step="0.1" value="24"
+                aria-label="Focal Length in millimeters, 35mm equivalent">
             </div>
             <div class="form-group">
               <label for="imageWidth">Image Width (pixels)</label>
-              <input type="number" id="imageWidth" class="form-input" step="1" value="4000" aria-label="Image Width in pixels">
+              <input type="number" id="imageWidth" class="form-input" step="1" value="4000"
+                aria-label="Image Width in pixels">
             </div>
             <div class="form-group">
               <label for="imageHeight">Image Height (pixels)</label>
-              <input type="number" id="imageHeight" class="form-input" step="1" value="3000" aria-label="Image Height in pixels">
+              <input type="number" id="imageHeight" class="form-input" step="1" value="3000"
+                aria-label="Image Height in pixels">
             </div>
             <div class="form-group">
               <label for="maxAltitude">Max Altitude (meters)</label>
-              <input type="number" id="maxAltitude" class="form-input" step="1" value="120" aria-label="Max Altitude in meters">
+              <input type="number" id="maxAltitude" class="form-input" step="1" value="120"
+                aria-label="Max Altitude in meters">
             </div>
             <div class="form-group">
               <label for="defaultAltitude">Default Altitude (meters)</label>
-              <input type="number" id="defaultAltitude" class="form-input" step="1" value="60" aria-label="Default Altitude in meters">
+              <input type="number" id="defaultAltitude" class="form-input" step="1" value="60"
+                aria-label="Default Altitude in meters">
             </div>
           </div>
           <div class="section">
             <h3>Coverage Defaults</h3>
             <div class="form-group">
               <label for="defaultFrontOverlap">Default Front Overlap (%)</label>
-              <input type="number" id="defaultFrontOverlap" class="form-input" step="1" min="0" max="100" value="70" aria-label="Default Front Overlap percentage">
+              <input type="number" id="defaultFrontOverlap" class="form-input" step="1" min="0" max="100" value="70"
+                aria-label="Default Front Overlap percentage">
             </div>
             <div class="form-group">
               <label for="defaultSideOverlap">Default Side Overlap (%)</label>
-              <input type="number" id="defaultSideOverlap" class="form-input" step="1" min="0" max="100" value="60" aria-label="Default Side Overlap percentage">
+              <input type="number" id="defaultSideOverlap" class="form-input" step="1" min="0" max="100" value="60"
+                aria-label="Default Side Overlap percentage">
             </div>
             <div class="form-group">
               <label for="targetGSD">Target GSD (cm/pixel)</label>
-              <input type="number" id="targetGSD" class="form-input" step="0.1" min="0.5" max="10" value="2.5" aria-label="Target GSD in centimeters per pixel">
+              <input type="number" id="targetGSD" class="form-input" step="0.1" min="0.5" max="10" value="2.5"
+                aria-label="Target GSD in centimeters per pixel">
             </div>
           </div>
           <div class="section">
             <h3>Flight Path Defaults</h3>
             <div class="form-group">
               <label for="propertyOrbitOffsetMeters">Property orbit offset (meters)</label>
-              <input type="number" id="propertyOrbitOffsetMeters" class="form-input" step="1" min="0" value="10" aria-label="Property orbit offset in meters">
+              <input type="number" id="propertyOrbitOffsetMeters" class="form-input" step="1" min="0" value="10"
+                aria-label="Property orbit offset in meters">
             </div>
           </div>
           <button id="saveSettings" class="btn btn-primary">Save Settings</button>
@@ -488,4 +529,5 @@
   <script src="assets/js/map.js"></script>
   <script src="assets/js/app.js"></script>
 </body>
+
 </html>

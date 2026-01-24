@@ -39,6 +39,7 @@ html, body {
   color: var(--text-secondary);
   font-size: 16px;
   line-height: 1.6;
+  overflow: hidden; /* No page-level scrollbar */
 }
 
 .is-hidden { display: none !important; }
@@ -266,7 +267,10 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   border-left: 1px solid var(--border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
 }
 
 /* Step Navigation */

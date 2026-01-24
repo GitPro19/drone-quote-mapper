@@ -18,45 +18,79 @@ const CONFIG = {
     photoMultiplier: 1.0
   },
   photoPackages: [
-    { 
-      id: 'economy', 
-      name: 'Economy', 
-      description: 'Perfect for small properties and quick turnarounds.', 
-      landPhotos: 15, 
-      topDownShots: 2, 
-      spacingMultiplier: 1.4, 
+    {
+      id: 'economy',
+      name: 'Economy',
+      description: 'Essential coverage for small properties.',
+      landPhotos: 15,
+      topDownShots: 2,
+      spacingMultiplier: 1.4,
       altitudeMultiplier: 1.3,
       includedBuildings: 1,
       basePrice: 199,
-      includes: ['10-15 edited aerial photos', 'Basic editing', 'Standard turnaround (3-5 days)', 'Digital delivery', 'Includes 1 building orbit'],
-      bestFor: 'Small residential properties, quick listings'
+      includes: [
+        '15 total aerial photos',
+        'Top-down mapping shots (1 per acre)',
+        'Angled property views',
+        '1 building orbit (5 shots)',
+        'Basic color correction',
+        '3-5 day turnaround',
+        'Digital delivery'
+      ],
+      bestFor: 'Small lots under 2 acres'
     },
-    { 
-      id: 'standard', 
-      name: 'Standard', 
-      description: 'Most popular choice for medium to large properties.', 
-      landPhotos: 30, 
-      topDownShots: 3, 
-      spacingMultiplier: 1.0, 
+    {
+      id: 'standard',
+      name: 'Standard',
+      description: 'Complete coverage for most properties.',
+      landPhotos: 30,
+      topDownShots: 3,
+      spacingMultiplier: 1.0,
       altitudeMultiplier: 1.0,
       includedBuildings: 2,
       basePrice: 449,
-      includes: ['20-30 edited aerial photos', '30-60 second video compilation', 'Professional editing', 'Priority turnaround (2-3 days)', 'Digital delivery + social media formats', 'Includes 2 building orbits'],
-      bestFor: 'Medium properties, real estate listings, commercial properties',
+      includes: [
+        '30 total aerial photos',
+        'Top-down mapping shots (1 per acre)',
+        'Angled property views',
+        '2 building orbits (10 shots)',
+        '30-60 second highlight video',
+        'Professional editing',
+        '2-3 day turnaround',
+        'Social media ready formats'
+      ],
+      bestFor: 'Properties 2-10 acres',
       popular: true
     },
-    { 
-      id: 'premium', 
-      name: 'Premium', 
-      description: 'Maximum coverage with extended video and mapping.', 
-      landPhotos: 50, 
-      topDownShots: 4, 
-      spacingMultiplier: 0.85, 
+    {
+      id: 'premium',
+      name: 'Premium',
+      description: 'Complete aerial + ground real estate package.',
+      landPhotos: 50,
+      topDownShots: 4,
+      spacingMultiplier: 0.85,
       altitudeMultiplier: 0.9,
       includedBuildings: null,
-      basePrice: 849,
-      includes: ['30-50 edited aerial photos', '2-3 minute extended video', 'Premium color grading', '2D property map', 'Same-day or next-day turnaround', 'All digital formats + print-ready files', '360° aerial panoramas (optional)', 'Unlimited building orbits'],
-      bestFor: 'Large properties, luxury listings, commercial/industrial, marketing materials'
+      basePrice: 1299,
+      includes: [
+        '50+ total aerial photos',
+        'Top-down mapping shots',
+        'Comprehensive angled coverage',
+        'Unlimited building orbits',
+        '2-3 minute cinematic property video',
+        '---',
+        'GROUND PHOTOGRAPHY INCLUDED:',
+        '25+ professional interior photos',
+        '15+ exterior detail shots',
+        'HDR editing for all rooms',
+        'Virtual twilight conversion',
+        '---',
+        'Premium color grading',
+        '2D property map',
+        'Same-day/next-day turnaround',
+        'MLS-ready + print-ready files'
+      ],
+      bestFor: 'Luxury listings, full real estate packages'
     }
   ],
   defaultPackageId: 'standard',
